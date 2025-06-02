@@ -478,7 +478,7 @@ exports.requestResetPassword = async (req, res) => {
       [user.id, token, expiresAt]
     );
     
-    const resetLink = `http://localhost:3001/reset-password?token=${token}`;
+    const resetLink = `https://newsinsight.space/reset-password?token=${token}`;
     const html = `
       <!DOCTYPE html>
 <html lang="id">
