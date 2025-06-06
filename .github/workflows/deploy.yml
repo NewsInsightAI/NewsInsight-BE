@@ -1,0 +1,49 @@
+name: Deploy via SSH with Cloudflared
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install cloudflared
+        run: |
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+          sudo dpkg -i cloudflared.deb
+
+      - name: Setup SSH directory and private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Setup Cloudflared cert
+        run: |
+          mkdir -p ~/.cloudflared
+          echo "${{ secrets.CLOUDFLARE_CERT }}" > ~/.cloudflared/cert.pem
+
+      - name: Setup known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy app via SSH
+        run: |
+          ssh -o "ProxyCommand=cloudflared access ssh --hostname ssh.robogo.website" -o StrictHostKeyChecking=no root@ssh.robogo.website bash -lc '
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            cd /mnt/sdcard/NewsInsightAI/server/
+            pm2 stop 
+            git stash
+            git pull
+            npm install
+            pm2 restart robogo_be
+          '

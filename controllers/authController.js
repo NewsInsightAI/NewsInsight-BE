@@ -15,17 +15,32 @@ exports.register = async (req, res) => {
   const { email, password, role, username } = req.body;
 
   if (!validator.isEmail(email)) {
-    return res.status(400).json({ message: "Format email tidak valid" });
+    return res.status(400).json({
+      status: "error",
+      message: "Format email tidak valid",
+      data: null,
+      error: { code: "INVALID_EMAIL" },
+      metadata: null
+    });
   }
   if (!username || typeof username !== "string" || username.trim() === "") {
-    return res.status(400).json({ message: "Username wajib diisi" });
+    return res.status(400).json({
+      status: "error",
+      message: "Username wajib diisi",
+      data: null,
+      error: { code: "USERNAME_REQUIRED" },
+      metadata: null
+    });
   }
   
   const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
   if (!passwordRegex.test(password)) {
     return res.status(400).json({
-      message:
-        "Gunakan minimal 8 karakter dengan kombinasi huruf dan angka",
+      status: "error",
+      message: "Gunakan minimal 8 karakter dengan kombinasi huruf dan angka",
+      data: null,
+      error: { code: "WEAK_PASSWORD" },
+      metadata: null
     });
   }
 
@@ -35,14 +50,26 @@ exports.register = async (req, res) => {
       [email]
     );
     if (existingUser.rows.length > 0)
-      return res.status(400).json({ message: "Email sudah digunakan" });
+      return res.status(400).json({
+        status: "error",
+        message: "Email sudah digunakan",
+        data: null,
+        error: { code: "EMAIL_EXISTS" },
+        metadata: null
+      });
 
     const existingUsername = await pool.query(
       "SELECT * FROM users WHERE username = $1",
       [username]
     );
     if (existingUsername.rows.length > 0)
-      return res.status(400).json({ message: "Username sudah digunakan" });
+      return res.status(400).json({
+        status: "error",
+        message: "Username sudah digunakan",
+        data: null,
+        error: { code: "USERNAME_EXISTS" },
+        metadata: null
+      });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -72,7 +99,11 @@ exports.register = async (req, res) => {
     } catch (err) {
       console.error("Failed to send OTP email:", err);
       return res.status(500).json({
+        status: "error",
         message: "Gagal mengirim email OTP. Registrasi dibatalkan.",
+        data: null,
+        error: { code: "EMAIL_SEND_FAILED" },
+        metadata: null
       });
     }
 
@@ -87,10 +118,22 @@ exports.register = async (req, res) => {
       [userId, otp, expiresAt, 0, false]
     );
 
-    res.status(201).json(newUser.rows[0]);
+    res.status(201).json({
+      status: "success",
+      message: "Registrasi berhasil. Silakan verifikasi email Anda.",
+      data: newUser.rows[0],
+      error: null,
+      metadata: null
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).send("Terjadi kesalahan pada server");
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
   }
 };
 
@@ -103,10 +146,22 @@ exports.login = async (req, res) => {
     typeof identifier !== "string" ||
     identifier.trim() === ""
   ) {
-    return res.status(400).json({ message: "Email/username wajib diisi" });
+    return res.status(400).json({
+      status: "error",
+      message: "Email/username wajib diisi",
+      data: null,
+      error: { code: "IDENTIFIER_REQUIRED" },
+      metadata: null
+    });
   }
   if (!password || typeof password !== "string" || password.trim() === "") {
-    return res.status(400).json({ message: "Password wajib diisi" });
+    return res.status(400).json({
+      status: "error",
+      message: "Password wajib diisi",
+      data: null,
+      error: { code: "PASSWORD_REQUIRED" },
+      metadata: null
+    });
   }
 
   try {
@@ -123,15 +178,23 @@ exports.login = async (req, res) => {
     const user = userRes.rows[0];
 
     if (!user)
-      return res
-        .status(400)
-        .json({ message: "Email/username atau password salah" });
+      return res.status(400).json({
+        status: "error",
+        message: "Email/username atau password salah",
+        data: null,
+        error: { code: "INVALID_CREDENTIALS" },
+        metadata: null
+      });
 
     const validPass = await bcrypt.compare(password, user.password);
     if (!validPass)
-      return res
-        .status(400)
-        .json({ message: "Email/username atau password salah" });
+      return res.status(400).json({
+        status: "error",
+        message: "Email/username atau password salah",
+        data: null,
+        error: { code: "INVALID_CREDENTIALS" },
+        metadata: null
+      });
 
     
     if (!user.email_verified) {
@@ -250,9 +313,13 @@ exports.login = async (req, res) => {
       return res.status(403).json({
         status: "unverified",
         message: "Email belum diverifikasi. Silakan cek email untuk kode verifikasi.",
-        userId: user.id,
-        email: user.email,
-        otpResent
+        data: {
+          userId: user.id,
+          email: user.email,
+          otpResent
+        },
+        error: { code: "EMAIL_UNVERIFIED" },
+        metadata: null
       });
     }
 
@@ -267,10 +334,35 @@ exports.login = async (req, res) => {
       { expiresIn: "2h" }
     );
 
-    res.json({ token });
+    res.json({
+      status: "success",
+      message: "Login successful.",
+      data: {
+        account: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          isVerified: user.email_verified,
+          isProfileComplete: true, // Atur sesuai kebutuhan
+          createdAt: user.created_at,
+          updatedAt: user.updated_at,
+          role: user.role
+        },
+        token,
+        expiresIn: 7200 // 2 jam dalam detik
+      },
+      error: null,
+      metadata: null
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).send("Terjadi kesalahan pada server");
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
   }
 };
 
@@ -285,7 +377,13 @@ exports.verifyEmail = async (req, res) => {
   const record = result.rows[0];
 
   if (!record)
-    return res.status(400).json({ message: "Kode tidak valid atau sudah expired" });
+    return res.status(400).json({
+      status: "error",
+      message: "Kode tidak valid atau sudah expired",
+      data: null,
+      error: { code: "INVALID_OR_EXPIRED_OTP" },
+      metadata: null
+    });
 
   
   if (record.attempts >= 5) {
@@ -293,7 +391,11 @@ exports.verifyEmail = async (req, res) => {
       record.id,
     ]);
     return res.status(400).json({
+      status: "error",
       message: "Terlalu banyak percobaan gagal. Silakan minta kode baru.",
+      data: null,
+      error: { code: "OTP_ATTEMPTS_EXCEEDED" },
+      metadata: null
     });
   }
 
@@ -301,7 +403,13 @@ exports.verifyEmail = async (req, res) => {
     await pool.query("DELETE FROM email_verifications WHERE id = $1", [
       record.id,
     ]);
-    return res.status(400).json({ message: "Kode sudah expired" });
+    return res.status(400).json({
+      status: "error",
+      message: "Kode sudah expired",
+      data: null,
+      error: { code: "OTP_EXPIRED" },
+      metadata: null
+    });
   }
 
   
@@ -315,7 +423,13 @@ exports.verifyEmail = async (req, res) => {
   await pool.query("DELETE FROM email_verifications WHERE id = $1", [
     record.id,
   ]);
-  return res.json({ message: "Email berhasil diverifikasi" });
+  return res.json({
+    status: "success",
+    message: "Email berhasil diverifikasi",
+    data: null,
+    error: null,
+    metadata: null
+  });
 };
 
 exports.resendOtp = async (req, res) => {
@@ -330,9 +444,21 @@ exports.resendOtp = async (req, res) => {
       return res.status(400).json({ message: "userId atau email wajib diisi" });
     }
     const user = userRes.rows[0];
-    if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+    if (!user) return res.status(404).json({
+      status: "error",
+      message: "User tidak ditemukan",
+      data: null,
+      error: { code: "USER_NOT_FOUND" },
+      metadata: null
+    });
     if (user.email_verified) {
-      return res.status(400).json({ message: "Email sudah diverifikasi" });
+      return res.status(400).json({
+        status: "error",
+        message: "Email sudah diverifikasi",
+        data: null,
+        error: { code: "EMAIL_ALREADY_VERIFIED" },
+        metadata: null
+      });
     }
     
     const otpRes = await pool.query(
@@ -442,18 +568,34 @@ exports.resendOtp = async (req, res) => {
       await sendEmail(user.email, "Your OTP Code", html);
     } catch (err) {
       console.error("Failed to send OTP email (resend):", err);
-      return res.status(500).json({ message: "Gagal mengirim email OTP" });
+      return res.status(500).json({
+        status: "error",
+        message: "Gagal mengirim email OTP",
+        data: null,
+        error: { code: "EMAIL_SEND_FAILED" },
+        metadata: null
+      });
     }
     return res.json({
-      status: "otp_sent",
+      status: "success",
       message: "Kode OTP berhasil dikirim ke email.",
-      userId: user.id,
-      email: user.email,
-      otpResent
+      data: {
+        userId: user.id,
+        email: user.email,
+        otpResent
+      },
+      error: null,
+      metadata: null
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Terjadi kesalahan pada server" });
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
   }
 };
 
@@ -461,12 +603,24 @@ exports.resendOtp = async (req, res) => {
 exports.requestResetPassword = async (req, res) => {
   const { email } = req.body;
   if (!validator.isEmail(email)) {
-    return res.status(400).json({ message: "Format email tidak valid" });
+    return res.status(400).json({
+      status: "error",
+      message: "Format email tidak valid",
+      data: null,
+      error: { code: "INVALID_EMAIL" },
+      metadata: null
+    });
   }
   try {
     const userRes = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
     const user = userRes.rows[0];
-    if (!user) return res.status(404).json({ message: "Email tidak ditemukan" });
+    if (!user) return res.status(404).json({
+      status: "error",
+      message: "Email tidak ditemukan",
+      data: null,
+      error: { code: "EMAIL_NOT_FOUND" },
+      metadata: null
+    });
 
     
     const token = crypto.randomBytes(32).toString("hex");
@@ -566,12 +720,30 @@ exports.requestResetPassword = async (req, res) => {
       await sendEmail(user.email, "Reset Password NewsInsight", html);
     } catch (err) {
       console.error("Gagal mengirim email reset password:", err);
-      return res.status(500).json({ message: "Gagal mengirim email reset password" });
+      return res.status(500).json({
+        status: "error",
+        message: "Gagal mengirim email reset password",
+        data: null,
+        error: { code: "EMAIL_SEND_FAILED" },
+        metadata: null
+      });
     }
-    res.json({ message: "Link reset password berhasil dikirim ke email" });
+    res.json({
+      status: "success",
+      message: "Link reset password berhasil dikirim ke email",
+      data: null,
+      error: null,
+      metadata: null
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Terjadi kesalahan pada server" });
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
   }
 };
 
@@ -579,12 +751,22 @@ exports.requestResetPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) {
-    return res.status(400).json({ message: "Token dan password baru wajib diisi" });
+    return res.status(400).json({
+      status: "error",
+      message: "Token dan password baru wajib diisi",
+      data: null,
+      error: { code: "TOKEN_OR_PASSWORD_REQUIRED" },
+      metadata: null
+    });
   }
   const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
   if (!passwordRegex.test(password)) {
     return res.status(400).json({
+      status: "error",
       message: "Gunakan minimal 8 karakter dengan kombinasi huruf dan angka",
+      data: null,
+      error: { code: "WEAK_PASSWORD" },
+      metadata: null
     });
   }
   try {
@@ -594,7 +776,13 @@ exports.resetPassword = async (req, res) => {
     );
     const reset = resetRes.rows[0];
     if (!reset || new Date() > reset.expires_at) {
-      return res.status(400).json({ message: "Token tidak valid atau sudah expired" });
+      return res.status(400).json({
+        status: "error",
+        message: "Token tidak valid atau sudah expired",
+        data: null,
+        error: { code: "INVALID_OR_EXPIRED_TOKEN" },
+        metadata: null
+      });
     }
     
     const salt = await bcrypt.genSalt(10);
@@ -602,10 +790,22 @@ exports.resetPassword = async (req, res) => {
     await pool.query("UPDATE users SET password = $1 WHERE id = $2", [hashedPassword, reset.user_id]);
     
     await pool.query("DELETE FROM password_resets WHERE user_id = $1", [reset.user_id]);
-    res.json({ message: "Password berhasil direset. Silakan login dengan password baru." });
+    res.json({
+      status: "success",
+      message: "Password berhasil direset. Silakan login dengan password baru.",
+      data: null,
+      error: null,
+      metadata: null
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Terjadi kesalahan pada server" });
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
   }
 };
 
@@ -613,7 +813,13 @@ exports.resetPassword = async (req, res) => {
 exports.checkResetToken = async (req, res) => {
   const { token } = req.body;
   if (!token) {
-    return res.status(400).json({ message: "Token wajib diisi" });
+    return res.status(400).json({
+      status: "error",
+      message: "Token wajib diisi",
+      data: null,
+      error: { code: "TOKEN_REQUIRED" },
+      metadata: null
+    });
   }
   try {
     const resetRes = await pool.query(
@@ -622,11 +828,29 @@ exports.checkResetToken = async (req, res) => {
     );
     const reset = resetRes.rows[0];
     if (!reset || new Date() > reset.expires_at) {
-      return res.status(400).json({ valid: false, message: "Token tidak valid atau sudah expired" });
+      return res.status(400).json({
+        status: "error",
+        message: "Token tidak valid atau sudah expired",
+        data: { valid: false },
+        error: { code: "INVALID_OR_EXPIRED_TOKEN" },
+        metadata: null
+      });
     }
-    return res.json({ valid: true, message: "Token valid" });
+    return res.json({
+      status: "success",
+      message: "Token valid",
+      data: { valid: true },
+      error: null,
+      metadata: null
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Terjadi kesalahan pada server" });
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
   }
 };
