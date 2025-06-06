@@ -2,19 +2,19 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure uploads directory exists
+
 const uploadsDir = path.join(__dirname, '../uploads/avatars');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configure multer for avatar uploads
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
-    // Create unique filename with timestamp and user ID
+    
     const userId = req.user?.id || 'unknown';
     const timestamp = Date.now();
     const extension = path.extname(file.originalname);
@@ -23,9 +23,9 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter for images only
+
 const fileFilter = (req, file, cb) => {
-  // Check if file is an image
+  
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
@@ -33,19 +33,19 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Configure multer
+
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 2 * 1024 * 1024, 
   }
 });
 
-// Middleware for single avatar upload
+
 const uploadAvatar = upload.single('avatar');
 
-// Wrapper to handle multer errors
+
 const handleAvatarUpload = (req, res, next) => {
   uploadAvatar(req, res, function (err) {
     if (err instanceof multer.MulterError) {

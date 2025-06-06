@@ -180,7 +180,7 @@ exports.register = async (req, res) => {
     );
     const userId = newUser.rows[0].id;
     
-    // Create empty profile for new user
+    
     await pool.query(
       "INSERT INTO profile (user_id, created_at, updated_at) VALUES ($1, NOW(), NOW())",
       [userId]
@@ -259,7 +259,7 @@ exports.login = async (req, res) => {
         metadata: null
       });
 
-    // Cegah login dengan password untuk user yang mendaftar lewat Google
+    
     if (user.google_id) {
       return res.status(400).json({
         status: "error",
@@ -407,7 +407,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check if profile is complete
+    
     const profileResult = await pool.query(
       "SELECT full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography FROM profile WHERE user_id = $1",
       [user.id]
@@ -416,7 +416,7 @@ exports.login = async (req, res) => {
     let isProfileComplete = false;
     if (profileResult.rows.length > 0) {
       const profile = profileResult.rows[0];
-      // Check if all required fields are filled
+      
       isProfileComplete = !!(
         profile.full_name &&
         profile.gender &&
@@ -455,7 +455,7 @@ exports.login = async (req, res) => {
           role: user.role
         },
         token,
-        expiresIn: 7200 // 2 jam dalam detik
+        expiresIn: 7200 
       },
       error: null,
       metadata: null
@@ -728,7 +728,7 @@ exports.requestResetPassword = async (req, res) => {
       metadata: null
     });
 
-    // Cegah reset password untuk user yang mendaftar lewat Google
+    
     if (user.google_id) {
       return res.status(400).json({
         status: "error",
@@ -902,7 +902,7 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // Cegah reset password untuk user yang mendaftar lewat Google
+    
     if (reset.google_id) {
       return res.status(400).json({
         status: "error",
@@ -965,7 +965,7 @@ exports.checkResetToken = async (req, res) => {
       });
     }
 
-    // Cegah validasi token untuk user yang mendaftar lewat Google
+    
     if (reset.google_id) {
       return res.status(400).json({
         status: "error",

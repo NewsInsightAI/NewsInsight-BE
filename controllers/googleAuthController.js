@@ -20,14 +20,14 @@ exports.googleAuth = async (req, res) => {
   }
 
   try {
-    // Verify Google token
+    
     const ticket = await client.verifyIdToken({
       idToken: googleToken,
       audience: GOOGLE_CLIENT_ID,
     });
     
     const payload = ticket.getPayload();
-    const { sub: googleId, email, name, picture } = payload;    // Check if user exists
+    const { sub: googleId, email, name, picture } = payload;    
     let userRes = await pool.query(
       "SELECT * FROM users WHERE email = $1 OR google_id = $2",
       [email, googleId]
@@ -37,28 +37,28 @@ exports.googleAuth = async (req, res) => {
     let isNewUser = false;
 
     if (!user) {
-      // Create new user
+      
       isNewUser = true;
-      const username = email.split('@')[0] + '_' + Date.now(); // Generate unique username
-      const dummyPassword = 'GOOGLE_OAUTH_' + googleId; // Dummy password for Google users
+      const username = email.split('@')[0] + '_' + Date.now(); 
+      const dummyPassword = 'GOOGLE_OAUTH_' + googleId; 
       const newUserRes = await pool.query(
         "INSERT INTO users (email, username, password, role, email_verified, google_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *",
         [email, username, dummyPassword, "user", true, googleId]
       );
-      user = newUserRes.rows[0];      // Create default profile with Google avatar
+      user = newUserRes.rows[0];      
       await pool.query(
         "INSERT INTO profile (user_id, full_name, avatar, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
         [user.id, name, picture]
       );
       
       console.log(`New user registered via Google: ${email}`);    } else if (!user.google_id) {
-      // Update existing user with Google ID
+      
       await pool.query(
         "UPDATE users SET google_id = $1, email_verified = true, updated_at = NOW() WHERE id = $2",
         [googleId, user.id]
       );
       
-      // Update profile with Google data
+      
       await pool.query(
         "UPDATE profile SET full_name = COALESCE(NULLIF(full_name, ''), $1), avatar = $2, updated_at = NOW() WHERE user_id = $3",
         [name, picture, user.id]
@@ -68,7 +68,7 @@ exports.googleAuth = async (req, res) => {
       user.email_verified = true;
       console.log(`Existing user linked with Google: ${email}`);
     } else {
-      // Update avatar for returning Google users if they don't have one
+      
       await pool.query(
         "UPDATE profile SET avatar = COALESCE(NULLIF(avatar, ''), $1), updated_at = NOW() WHERE user_id = $2",
         [picture, user.id]
@@ -76,7 +76,7 @@ exports.googleAuth = async (req, res) => {
       console.log(`Returning Google user: ${email}`);
     }
 
-    // Generate JWT token
+    
     const token = jwt.sign(
       {
         id: user.id,

@@ -2,12 +2,12 @@ const pool = require("../db");
 const path = require('path');
 const fs = require('fs');
 
-// Upload avatar controller
+
 exports.uploadAvatar = async (req, res) => {
   const userId = req.user.id;
   
   try {
-    // Check if file was uploaded
+    
     if (!req.file) {
       return res.status(400).json({
         status: 'error',
@@ -18,17 +18,17 @@ exports.uploadAvatar = async (req, res) => {
       });
     }
 
-    // Get the uploaded file info
+    
     const filename = req.file.filename;
     const avatarUrl = `/uploads/avatars/${filename}`;
 
-    // Get current avatar to delete old file
+    
     const currentProfile = await pool.query(
       'SELECT avatar FROM profile WHERE user_id = $1',
       [userId]
     );
 
-    // Update avatar in database
+    
     const result = await pool.query(
       `INSERT INTO profile (user_id, avatar, updated_at)
        VALUES ($1, $2, NOW())
@@ -39,7 +39,7 @@ exports.uploadAvatar = async (req, res) => {
       [userId, avatarUrl]
     );
 
-    // Delete old avatar file if it exists and is not the default
+    
     if (currentProfile.rows.length > 0 && currentProfile.rows[0].avatar) {
       const oldAvatar = currentProfile.rows[0].avatar;
       if (oldAvatar.startsWith('/uploads/avatars/')) {
@@ -64,7 +64,7 @@ exports.uploadAvatar = async (req, res) => {
   } catch (error) {
     console.error('Avatar upload error:', error);
     
-    // Delete uploaded file if database update failed
+    
     if (req.file) {
       const filePath = req.file.path;
       if (fs.existsSync(filePath)) {
@@ -82,12 +82,12 @@ exports.uploadAvatar = async (req, res) => {
   }
 };
 
-// Delete avatar controller
+
 exports.deleteAvatar = async (req, res) => {
   const userId = req.user.id;
   
   try {
-    // Get current avatar
+    
     const currentProfile = await pool.query(
       'SELECT avatar FROM profile WHERE user_id = $1',
       [userId]
@@ -105,13 +105,13 @@ exports.deleteAvatar = async (req, res) => {
 
     const currentAvatar = currentProfile.rows[0].avatar;
 
-    // Update database to remove avatar
+    
     await pool.query(
       'UPDATE profile SET avatar = NULL, updated_at = NOW() WHERE user_id = $1',
       [userId]
     );
 
-    // Delete file if it's an uploaded file
+    
     if (currentAvatar.startsWith('/uploads/avatars/')) {
       const filePath = path.join(__dirname, '../uploads/avatars', path.basename(currentAvatar));
       if (fs.existsSync(filePath)) {

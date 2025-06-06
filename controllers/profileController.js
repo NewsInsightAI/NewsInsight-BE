@@ -1,6 +1,6 @@
 const pool = require("../db");
 
-// Get all profiles
+
 exports.getAllProfiles = async (req, res) => {
   try {
     const result = await pool.query(
@@ -25,7 +25,7 @@ exports.getAllProfiles = async (req, res) => {
   }
 };
 
-// Get profile by user_id
+
 exports.getProfileByUserId = async (req, res) => {
   const { userId } = req.params;
   try {
@@ -59,8 +59,8 @@ exports.getProfileByUserId = async (req, res) => {
   }
 };
 
-// Get my profile (authenticated user)
-exports.getMyProfile = async (req, res) => {  const userId = req.user.id; // Assuming user ID is stored in req.user by middleware
+
+exports.getMyProfile = async (req, res) => {  const userId = req.user.id; 
   
   try {
     const result = await pool.query(
@@ -68,13 +68,13 @@ exports.getMyProfile = async (req, res) => {  const userId = req.user.id; // Ass
       [userId]
     );
       if (result.rows.length === 0) {
-      // If profile doesn't exist, create an empty one
+      
       await pool.query(
         "INSERT INTO profile (user_id, created_at, updated_at) VALUES ($1, NOW(), NOW())",
         [userId]
       );
       
-      // Get user data to return with empty profile
+      
       const userResult = await pool.query(
         "SELECT email, username FROM users WHERE id = $1",
         [userId]
@@ -132,7 +132,7 @@ exports.getMyProfile = async (req, res) => {  const userId = req.user.id; // Ass
   }
 }
 
-// Create or update profile (upsert)
+
 exports.upsertProfile = async (req, res) => {
   const { userId } = req.params;
   const {
@@ -145,39 +145,39 @@ exports.upsertProfile = async (req, res) => {
     headline,
     biography,
     avatar  } = req.body;
-  // Handle news_interest conversion - extract only values for database storage
+  
   let processedNewsInterest = news_interest;
   
   console.log("Processing news interest, type:", typeof news_interest);
   
   if (typeof news_interest === 'string') {
     try {
-      // Parse the JSON string to get the array of objects
+      
       const newsInterestArray = JSON.parse(news_interest);
       console.log("Parsed news interest array:", newsInterestArray);
         if (Array.isArray(newsInterestArray)) {
-        // Extract only the values from objects and store as array
+        
         const values = newsInterestArray.map(item => {
           if (typeof item === 'object' && item.value) {
-            return item.value; // Extract only the value
+            return item.value; 
           }
-          return item; // If it's already a string, keep it
+          return item; 
         });
         processedNewsInterest = values;
         console.log("Extracted values:", values);
       }
     } catch (error) {
       console.error("Error parsing news_interest:", error);
-      processedNewsInterest = []; // Default to empty array
+      processedNewsInterest = []; 
     }
   } else if (Array.isArray(news_interest)) {
     console.log("News interest is already an array:", news_interest);
-    // If it's already an array, extract values and store as array
+    
     const values = news_interest.map(item => {
       if (typeof item === 'object' && item.value) {
-        return item.value; // Extract only the value
+        return item.value; 
       }
-      return item; // If it's already a string, keep it
+      return item; 
     });
     processedNewsInterest = values;
     console.log("Extracted values from array:", values);
@@ -222,7 +222,7 @@ exports.upsertProfile = async (req, res) => {
   }
 };
 
-// Delete profile by user_id
+
 exports.deleteProfile = async (req, res) => {
   const { userId } = req.params;
   try {
@@ -256,9 +256,9 @@ exports.deleteProfile = async (req, res) => {
   }
 };
 
-// Update my profile (authenticated user only)
+
 exports.updateMyProfile = async (req, res) => {
-  const userId = req.user.id; // Get user ID from JWT token
+  const userId = req.user.id; 
   const {
     full_name,
     username,
@@ -269,55 +269,148 @@ exports.updateMyProfile = async (req, res) => {
     news_interest,
     headline,
     biography,
-    avatar  } = req.body;
-      // Handle news_interest conversion - extract only values for database storage
+    avatar
+  } = req.body;
+
+  
   let processedNewsInterest = news_interest;
   if (typeof news_interest === 'string') {
     try {
-      // Parse the JSON string to get the array of objects
+      
       const newsInterestArray = JSON.parse(news_interest);
       if (Array.isArray(newsInterestArray)) {
-        // Extract only the values from objects and store as JSON array of strings
+        
         const values = newsInterestArray.map(item => {
           if (typeof item === 'object' && item.value) {
-            return item.value; // Extract only the value
+            return item.value; 
           }
-          return item; // If it's already a string, keep it
+          return item; 
         });
         processedNewsInterest = values;
       }
     } catch (error) {
       console.error("Error parsing news_interest:", error);
-      processedNewsInterest = []; // Default to empty array
+      processedNewsInterest = []; 
     }
   } else if (Array.isArray(news_interest)) {
-    // If it's already an array, extract values and convert to array
+    
     const values = news_interest.map(item => {
       if (typeof item === 'object' && item.value) {
-        return item.value; // Extract only the value
+        return item.value; 
       }
-      return item; // If it's already a string, keep it
+      return item; 
     });
     processedNewsInterest = values;
   }
   
   try {
-    const result = await pool.query(
-      `INSERT INTO profile (user_id, full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography, avatar, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-       ON CONFLICT (user_id) DO UPDATE SET
-         full_name = EXCLUDED.full_name,
-         gender = EXCLUDED.gender,
-         date_of_birth = EXCLUDED.date_of_birth,
-         phone_number = EXCLUDED.phone_number,
-         domicile = EXCLUDED.domicile,
-         news_interest = EXCLUDED.news_interest,
-         headline = EXCLUDED.headline,
-         biography = EXCLUDED.biography,
-         avatar = EXCLUDED.avatar,
-         updated_at = NOW()
-       RETURNING *`,
-      [userId, full_name, gender, date_of_birth, phone_number, domicile, processedNewsInterest, headline, biography, avatar]    );
+    
+    const existingProfile = await pool.query(
+      "SELECT * FROM profile WHERE user_id = $1",
+      [userId]
+    );
+    
+    if (existingProfile.rows.length === 0) {
+      
+      const result = await pool.query(
+        `INSERT INTO profile (user_id, full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography, avatar, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+         RETURNING *`,
+        [userId, full_name, gender, date_of_birth, phone_number, domicile, processedNewsInterest, headline, biography, avatar]
+      );
+      
+      return res.json({
+        status: "success",
+        message: "Profile berhasil dibuat",
+        data: result.rows[0],
+        error: null,
+        metadata: null
+      });
+    }
+    
+    
+    const updateFields = [];
+    const updateValues = [];
+    let paramIndex = 1;
+    
+    if (full_name !== undefined) {
+      updateFields.push(`full_name = $${paramIndex}`);
+      updateValues.push(full_name);
+      paramIndex++;
+    }
+    
+    if (username !== undefined) {
+      
+      
+    }
+    
+    if (gender !== undefined) {
+      updateFields.push(`gender = $${paramIndex}`);
+      updateValues.push(gender);
+      paramIndex++;
+    }
+    
+    if (date_of_birth !== undefined) {
+      updateFields.push(`date_of_birth = $${paramIndex}`);
+      updateValues.push(date_of_birth);
+      paramIndex++;
+    }
+    
+    if (phone_number !== undefined) {
+      updateFields.push(`phone_number = $${paramIndex}`);
+      updateValues.push(phone_number);
+      paramIndex++;
+    }
+    
+    if (domicile !== undefined) {
+      updateFields.push(`domicile = $${paramIndex}`);
+      updateValues.push(domicile);
+      paramIndex++;
+    }
+    
+    if (processedNewsInterest !== undefined) {
+      updateFields.push(`news_interest = $${paramIndex}`);
+      updateValues.push(processedNewsInterest);
+      paramIndex++;
+    }
+    
+    if (headline !== undefined) {
+      updateFields.push(`headline = $${paramIndex}`);
+      updateValues.push(headline);
+      paramIndex++;
+    }
+    
+    if (biography !== undefined) {
+      updateFields.push(`biography = $${paramIndex}`);
+      updateValues.push(biography);
+      paramIndex++;
+    }
+    
+    if (avatar !== undefined) {
+      updateFields.push(`avatar = $${paramIndex}`);
+      updateValues.push(avatar);
+      paramIndex++;
+    }
+    
+    
+    updateFields.push(`updated_at = NOW()`);
+    
+    if (updateFields.length === 1) { 
+      return res.status(400).json({
+        status: "error",
+        message: "No fields to update",
+        data: null,
+        error: { code: "NO_FIELDS_TO_UPDATE" },
+        metadata: null
+      });
+    }
+    
+    
+    updateValues.push(userId);
+    
+    const query = `UPDATE profile SET ${updateFields.join(', ')} WHERE user_id = $${paramIndex} RETURNING *`;
+    
+    const result = await pool.query(query, updateValues);
 
     res.json({
       status: "success",
@@ -338,4 +431,4 @@ exports.updateMyProfile = async (req, res) => {
   }
 };
 
-// Create or update profile (upsert) - Admin only
+

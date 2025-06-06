@@ -1,4 +1,4 @@
-// Middleware untuk logging setiap request yang masuk
+
 function requestLogger(req, res, next) {
   const method = req.method;
   const url = req.originalUrl || req.url;
@@ -7,19 +7,19 @@ function requestLogger(req, res, next) {
     timeZone: 'Asia/Jakarta'
   });
   
-  // Warna untuk setiap HTTP method
+  
   const getMethodColor = (method) => {
     const colors = {
-      GET: '\x1b[32m[GET]\x1b[0m   ',     // Green
-      POST: '\x1b[33m[POST]\x1b[0m  ',    // Yellow
-      PUT: '\x1b[34m[PUT]\x1b[0m   ',     // Blue
-      DELETE: '\x1b[31m[DELETE]\x1b[0m',  // Red
-      PATCH: '\x1b[35m[PATCH]\x1b[0m '    // Magenta
+      GET: '\x1b[32m[GET]\x1b[0m   ',     
+      POST: '\x1b[33m[POST]\x1b[0m  ',    
+      PUT: '\x1b[34m[PUT]\x1b[0m   ',     
+      DELETE: '\x1b[31m[DELETE]\x1b[0m',  
+      PATCH: '\x1b[35m[PATCH]\x1b[0m '    
     };
     return colors[method] || `[${method}]`;
   };
   
-  // Log request
+  
   console.log(`${getMethodColor(method)} ${url}`);
   
   next();

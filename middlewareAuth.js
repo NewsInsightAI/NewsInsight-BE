@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET || "defaultsecret";
 
-// Middleware untuk autentikasi JWT
+
 module.exports = function (req, res, next) {
   const authHeader = req.headers["authorization"];
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -16,7 +16,7 @@ module.exports = function (req, res, next) {
   const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // simpan payload user ke req.user
+    req.user = decoded; 
     next();
   } catch (err) {
     return res.status(401).json({
