@@ -79,18 +79,84 @@ exports.register = async (req, res) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); 
     const html = `
       <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8" />
-          <title>Your NewsInsight Verification Code</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; color: #222;">
-          <h2>Your NewsInsight Verification Code</h2>
-          <p>Your verification code is:</p>
-          <div style="font-size: 2em; font-weight: bold; letter-spacing: 4px; margin: 16px 0;">${otp}</div>
-          <p>This code will expire in 10 minutes.</p>
-        </body>
-      </html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Verifikasi Email Anda - NewsInsight</title>
+    <style>
+      body {
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background-color: #f4f4f7;
+        margin: 0;
+        padding: 0;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 40px auto;
+        background: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      }
+      .header {
+        background: linear-gradient(to right, #3BD5FF, #367AF2);
+        color: white;
+        text-align: center;
+        padding: 30px 20px;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .content {
+        padding: 30px 40px;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .otp-code {
+        font-size: 32px;
+        font-weight: bold;
+        text-align: center;
+        letter-spacing: 8px;
+        margin: 24px 0;
+        background-color: #f0f4ff;
+        padding: 12px 0;
+        border-radius: 6px;
+        color: #2a2a2a;
+      }
+      .footer {
+        font-size: 12px;
+        text-align: center;
+        color: #888;
+        padding: 20px 30px;
+        background-color: #fafafa;
+      }
+      @media only screen and (max-width: 600px) {
+        .content {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Verifikasi Email Anda</h1>
+      </div>
+      <div class="content">
+        <p>Halo,</p>
+        <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <div class="otp-code">${otp}</div>
+        <p>Jika Anda tidak meminta kode ini, abaikan saja email ini. Tidak ada perubahan yang akan dilakukan.</p>
+        <p>Salam hangat,<br>Tim NewsInsight</p>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} NewsInsight. Semua hak dilindungi.
+      </div>
+    </div>
+  </body>
+</html>
     `;
 
     
@@ -113,6 +179,13 @@ exports.register = async (req, res) => {
       [email, hashedPassword, role || "user", username]
     );
     const userId = newUser.rows[0].id;
+    
+    // Create empty profile for new user
+    await pool.query(
+      "INSERT INTO profile (user_id, created_at, updated_at) VALUES ($1, NOW(), NOW())",
+      [userId]
+    );
+    
     await pool.query(
       "INSERT INTO email_verifications (user_id, otp_code, expires_at, attempts, verified) VALUES ($1, $2, $3, $4, $5)",
       [userId, otp, expiresAt, 0, false]
@@ -186,6 +259,17 @@ exports.login = async (req, res) => {
         metadata: null
       });
 
+    // Cegah login dengan password untuk user yang mendaftar lewat Google
+    if (user.google_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Akun ini terdaftar melalui Google. Silakan login menggunakan Google.",
+        data: null,
+        error: { code: "GOOGLE_AUTH_REQUIRED" },
+        metadata: null
+      });
+    }
+
     const validPass = await bcrypt.compare(password, user.password);
     if (!validPass)
       return res.status(400).json({
@@ -225,42 +309,42 @@ exports.login = async (req, res) => {
       if (otpResent) {
         const html = `
           <!DOCTYPE html>
-      <html lang="id">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Verifikasi Email Anda - NewsInsight</title>
-          <style>
-            body {
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Verifikasi Email Diperlukan - NewsInsight</title>
+    <style>
+      body {
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         background-color: #f4f4f7;
         margin: 0;
         padding: 0;
         color: #333;
-            }
-            .container {
+      }
+      .container {
         max-width: 600px;
         margin: 40px auto;
         background: #ffffff;
         border-radius: 8px;
         overflow: hidden;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-            }
-            .header {
+      }
+      .header {
         background: linear-gradient(to right, #3BD5FF, #367AF2);
         color: white;
         text-align: center;
         padding: 30px 20px;
-            }
-            .header h1 {
+      }
+      .header h1 {
         margin: 0;
         font-size: 22px;
-            }
-            .content {
+      }
+      .content {
         padding: 30px 40px;
         font-size: 16px;
         line-height: 1.6;
-            }
-            .otp-code {
+      }
+      .otp-code {
         font-size: 32px;
         font-weight: bold;
         text-align: center;
@@ -270,39 +354,39 @@ exports.login = async (req, res) => {
         padding: 12px 0;
         border-radius: 6px;
         color: #2a2a2a;
-            }
-            .footer {
+      }
+      .footer {
         font-size: 12px;
         text-align: center;
         color: #888;
         padding: 20px 30px;
         background-color: #fafafa;
-            }
-            @media only screen and (max-width: 600px) {
+      }
+      @media only screen and (max-width: 600px) {
         .content {
           padding: 20px;
         }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
         <h1>Verifikasi Email Diperlukan</h1>
-            </div>
-            <div class="content">
+      </div>
+      <div class="content">
         <p>Halo, ${user.email}!</p>
         <p>Sebelum Anda dapat mengakses akun, silakan verifikasi email Anda menggunakan kode di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
         <div class="otp-code">${otp}</div>
         <p>Jika Anda tidak mencoba login, abaikan pesan ini.</p>
-        <p>Terima kasih,<br>Tim NewsInsight</p>
-            </div>
-            <div class="footer">
-        &copy; ${new Date().getFullYear()} NewsInsight. All rights reserved.
-            </div>
-          </div>
-        </body>
-      </html>
+        <p>Salam hangat,<br>Tim NewsInsight</p>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} NewsInsight. Semua hak dilindungi.
+      </div>
+    </div>
+  </body>
+</html>
         `;
         try {
           await sendEmail(user.email, "Your OTP Code", html);
@@ -321,6 +405,28 @@ exports.login = async (req, res) => {
         error: { code: "EMAIL_UNVERIFIED" },
         metadata: null
       });
+    }
+
+    // Check if profile is complete
+    const profileResult = await pool.query(
+      "SELECT full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography FROM profile WHERE user_id = $1",
+      [user.id]
+    );
+    
+    let isProfileComplete = false;
+    if (profileResult.rows.length > 0) {
+      const profile = profileResult.rows[0];
+      // Check if all required fields are filled
+      isProfileComplete = !!(
+        profile.full_name &&
+        profile.gender &&
+        profile.date_of_birth &&
+        profile.phone_number &&
+        profile.domicile &&
+        profile.news_interest &&
+        profile.headline &&
+        profile.biography
+      );
     }
 
     const token = jwt.sign(
@@ -343,7 +449,7 @@ exports.login = async (req, res) => {
           username: user.username,
           email: user.email,
           isVerified: user.email_verified,
-          isProfileComplete: true, // Atur sesuai kebutuhan
+          isProfileComplete: isProfileComplete,
           createdAt: user.created_at,
           updatedAt: user.updated_at,
           role: user.role
@@ -485,84 +591,84 @@ exports.resendOtp = async (req, res) => {
     
     const html = `
       <!DOCTYPE html>
-  <html lang="id">
-    <head>
+<html lang="id">
+  <head>
     <meta charset="UTF-8" />
     <title>Verifikasi Email Anda - NewsInsight</title>
     <style>
       body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      background-color: #f4f4f7;
-      margin: 0;
-      padding: 0;
-      color: #333;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background-color: #f4f4f7;
+        margin: 0;
+        padding: 0;
+        color: #333;
       }
       .container {
-      max-width: 600px;
-      margin: 40px auto;
-      background: #ffffff;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        max-width: 600px;
+        margin: 40px auto;
+        background: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
       }
       .header {
-      background: linear-gradient(to right, #3BD5FF, #367AF2);
-      color: white;
-      text-align: center;
-      padding: 30px 20px;
+        background: linear-gradient(to right, #3BD5FF, #367AF2);
+        color: white;
+        text-align: center;
+        padding: 30px 20px;
       }
       .header h1 {
-      margin: 0;
-      font-size: 22px;
+        margin: 0;
+        font-size: 22px;
       }
       .content {
-      padding: 30px 40px;
-      font-size: 16px;
-      line-height: 1.6;
+        padding: 30px 40px;
+        font-size: 16px;
+        line-height: 1.6;
       }
       .otp-code {
-      font-size: 32px;
-      font-weight: bold;
-      text-align: center;
-      letter-spacing: 8px;
-      margin: 24px 0;
-      background-color: #f0f4ff;
-      padding: 12px 0;
-      border-radius: 6px;
-      color: #2a2a2a;
+        font-size: 32px;
+        font-weight: bold;
+        text-align: center;
+        letter-spacing: 8px;
+        margin: 24px 0;
+        background-color: #f0f4ff;
+        padding: 12px 0;
+        border-radius: 6px;
+        color: #2a2a2a;
       }
       .footer {
-      font-size: 12px;
-      text-align: center;
-      color: #888;
-      padding: 20px 30px;
-      background-color: #fafafa;
+        font-size: 12px;
+        text-align: center;
+        color: #888;
+        padding: 20px 30px;
+        background-color: #fafafa;
       }
       @media only screen and (max-width: 600px) {
-      .content {
-        padding: 20px;
-      }
+        .content {
+          padding: 20px;
+        }
       }
     </style>
-    </head>
-    <body>
+  </head>
+  <body>
     <div class="container">
       <div class="header">
-      <h1>Verifikasi Email Anda</h1>
+        <h1>Verifikasi Email Anda</h1>
       </div>
       <div class="content">
-      <p>Halo, ${user.email}!</p>
-      <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
-      <div class="otp-code">${otp}</div>
-      <p>Jika Anda tidak meminta kode ini, abaikan saja email ini. Tidak ada perubahan yang akan dilakukan.</p>
-      <p>Terima kasih,<br>Tim NewsInsight</p>
+        <p>Halo, ${user.email}!</p>
+        <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <div class="otp-code">${otp}</div>
+        <p>Jika Anda tidak meminta kode ini, abaikan saja email ini. Tidak ada perubahan yang akan dilakukan.</p>
+        <p>Salam hangat,<br>Tim NewsInsight</p>
       </div>
       <div class="footer">
-      &copy; ${new Date().getFullYear()} NewsInsight. All rights reserved.
+        &copy; ${new Date().getFullYear()} NewsInsight. Semua hak dilindungi.
       </div>
     </div>
-    </body>
-  </html>
+  </body>
+</html>
     `;
     try {
       await sendEmail(user.email, "Your OTP Code", html);
@@ -621,6 +727,17 @@ exports.requestResetPassword = async (req, res) => {
       error: { code: "EMAIL_NOT_FOUND" },
       metadata: null
     });
+
+    // Cegah reset password untuk user yang mendaftar lewat Google
+    if (user.google_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
+        data: null,
+        error: { code: "GOOGLE_AUTH_NO_PASSWORD" },
+        metadata: null
+      });
+    }
 
     
     const token = crypto.randomBytes(32).toString("hex");
@@ -771,7 +888,7 @@ exports.resetPassword = async (req, res) => {
   }
   try {
     const resetRes = await pool.query(
-      "SELECT * FROM password_resets WHERE token = $1",
+      "SELECT pr.*, u.google_id FROM password_resets pr JOIN users u ON pr.user_id = u.id WHERE pr.token = $1",
       [token]
     );
     const reset = resetRes.rows[0];
@@ -781,6 +898,17 @@ exports.resetPassword = async (req, res) => {
         message: "Token tidak valid atau sudah expired",
         data: null,
         error: { code: "INVALID_OR_EXPIRED_TOKEN" },
+        metadata: null
+      });
+    }
+
+    // Cegah reset password untuk user yang mendaftar lewat Google
+    if (reset.google_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
+        data: null,
+        error: { code: "GOOGLE_AUTH_NO_PASSWORD" },
         metadata: null
       });
     }
@@ -823,7 +951,7 @@ exports.checkResetToken = async (req, res) => {
   }
   try {
     const resetRes = await pool.query(
-      "SELECT * FROM password_resets WHERE token = $1",
+      "SELECT pr.*, u.google_id FROM password_resets pr JOIN users u ON pr.user_id = u.id WHERE pr.token = $1",
       [token]
     );
     const reset = resetRes.rows[0];
@@ -833,6 +961,17 @@ exports.checkResetToken = async (req, res) => {
         message: "Token tidak valid atau sudah expired",
         data: { valid: false },
         error: { code: "INVALID_OR_EXPIRED_TOKEN" },
+        metadata: null
+      });
+    }
+
+    // Cegah validasi token untuk user yang mendaftar lewat Google
+    if (reset.google_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
+        data: { valid: false },
+        error: { code: "GOOGLE_AUTH_NO_PASSWORD" },
         metadata: null
       });
     }
