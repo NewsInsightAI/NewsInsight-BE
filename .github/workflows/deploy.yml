@@ -45,5 +45,5 @@ jobs:
             git stash
             git pull
             npm install
-            pm2 restart robogo_be
+            pm2 restart newsinsight_be
           '
