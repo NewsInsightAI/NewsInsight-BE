@@ -88,8 +88,7 @@ exports.getMyProfile = async (req, res) => {  const userId = req.user.id;
           error: { code: "USER_NOT_FOUND" },
           metadata: null
         });
-      }
-        const emptyProfile = {
+      }        const emptyProfile = {
         user_id: userId,
         full_name: null,
         gender: null,
@@ -100,6 +99,9 @@ exports.getMyProfile = async (req, res) => {  const userId = req.user.id;
         headline: null,
         biography: null,
         avatar: null,
+        last_education: null,
+        work_experience: null,
+        cv_file: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         email: userResult.rows[0].email,
@@ -269,7 +271,10 @@ exports.updateMyProfile = async (req, res) => {
     news_interest,
     headline,
     biography,
-    avatar
+    avatar,
+    last_education,
+    work_experience,
+    cv_file
   } = req.body;
 
   
@@ -311,12 +316,11 @@ exports.updateMyProfile = async (req, res) => {
     );
     
     if (existingProfile.rows.length === 0) {
-      
-      const result = await pool.query(
-        `INSERT INTO profile (user_id, full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography, avatar, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        const result = await pool.query(
+        `INSERT INTO profile (user_id, full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography, avatar, last_education, work_experience, cv_file, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
          RETURNING *`,
-        [userId, full_name, gender, date_of_birth, phone_number, domicile, processedNewsInterest, headline, biography, avatar]
+        [userId, full_name, gender, date_of_birth, phone_number, domicile, processedNewsInterest, headline, biography, avatar, last_education, work_experience, cv_file]
       );
       
       return res.json({
@@ -385,14 +389,31 @@ exports.updateMyProfile = async (req, res) => {
       updateValues.push(biography);
       paramIndex++;
     }
-    
-    if (avatar !== undefined) {
+      if (avatar !== undefined) {
       updateFields.push(`avatar = $${paramIndex}`);
       updateValues.push(avatar);
       paramIndex++;
     }
     
+    if (last_education !== undefined) {
+      updateFields.push(`last_education = $${paramIndex}`);
+      updateValues.push(last_education);
+      paramIndex++;
+    }
     
+    if (work_experience !== undefined) {
+      updateFields.push(`work_experience = $${paramIndex}`);
+      updateValues.push(work_experience);
+      paramIndex++;
+    }
+    
+    if (cv_file !== undefined) {
+      updateFields.push(`cv_file = $${paramIndex}`);
+      updateValues.push(cv_file);
+      paramIndex++;
+    }
+    
+    // Always update the updated_at field
     updateFields.push(`updated_at = NOW()`);
     
     if (updateFields.length === 1) { 

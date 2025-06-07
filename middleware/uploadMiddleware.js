@@ -78,7 +78,86 @@ const handleAvatarUpload = (req, res, next) => {
   });
 };
 
+
+// CV Upload Configuration
+const cvUploadsDir = path.join(__dirname, '../uploads/cv');
+if (!fs.existsSync(cvUploadsDir)) {
+  fs.mkdirSync(cvUploadsDir, { recursive: true });
+}
+
+// CV Storage configuration
+const cvStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, cvUploadsDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename for CV
+    const userId = req.user?.id || 'unknown';
+    const timestamp = Date.now();
+    const extension = path.extname(file.originalname);
+    const filename = `cv-${userId}-${timestamp}${extension}`;
+    cb(null, filename);
+  }
+});
+
+// CV File filter (only PDF)
+const cvFileFilter = (req, file, cb) => {
+  // Only allow PDF files for CV
+  if (file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PDF files are allowed for CV upload!'), false);
+  }
+};
+
+// CV Upload configuration
+const cvUpload = multer({
+  storage: cvStorage,
+  fileFilter: cvFileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for CV files
+  }
+});
+
+// CV Upload single file
+const uploadCV = cvUpload.single('cv');
+
+// Handle CV upload with error handling
+const handleCVUpload = (req, res, next) => {
+  uploadCV(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          status: 'error',
+          message: 'CV file too large. Maximum size is 5MB.',
+          data: null,
+          error: { code: 'FILE_TOO_LARGE' },
+          metadata: null
+        });
+      }
+      return res.status(400).json({
+        status: 'error',
+        message: 'CV upload error: ' + err.message,
+        data: null,
+        error: { code: 'UPLOAD_ERROR' },
+        metadata: null
+      });
+    } else if (err) {
+      return res.status(400).json({
+        status: 'error',
+        message: err.message,
+        data: null,
+        error: { code: 'INVALID_FILE' },
+        metadata: null
+      });
+    }
+    next();
+  });
+};
+
 module.exports = {
   handleAvatarUpload,
-  uploadsDir
+  handleCVUpload,
+  uploadsDir,
+  cvUploadsDir
 };
