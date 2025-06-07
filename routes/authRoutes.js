@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
 const googleAuthController = require("../controllers/googleAuthController");
+const middlewareAuth = require("../middleware/middlewareAuth");
 
 router.post("/register", authController.register);
 router.post("/login", authController.login);
@@ -11,5 +12,10 @@ router.post("/request-reset-password", authController.requestResetPassword);
 router.post("/reset-password", authController.resetPassword);
 router.post("/check-reset-token", authController.checkResetToken);
 router.post("/google", googleAuthController.googleAuth);
+router.post("/verify-mfa-token", authController.verifyMfaToken);
+
+router.get("/user-info", middlewareAuth, authController.getUserInfo);
+router.put("/update-email", middlewareAuth, authController.updateEmail);
+router.put("/update-password", middlewareAuth, authController.updatePassword);
 
 module.exports = router;

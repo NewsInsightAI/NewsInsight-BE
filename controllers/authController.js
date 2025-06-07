@@ -408,6 +408,39 @@ exports.login = async (req, res) => {
     }
 
     
+    const mfaSettingsRes = await pool.query(
+      "SELECT enabled_methods, is_enabled FROM mfa_settings WHERE user_id = $1 AND is_enabled = true",
+      [user.id]
+    );
+
+    if (mfaSettingsRes.rows.length > 0) {
+      
+      const enabledMethods = mfaSettingsRes.rows[0].enabled_methods || [];
+      
+      
+      const trustedDeviceRes = await pool.query(
+        "SELECT id FROM trusted_devices WHERE user_id = $1 AND expires_at > NOW() AND device_fingerprint = $2",
+        [user.id, req.headers['user-agent'] || 'unknown'] 
+      );
+
+      if (trustedDeviceRes.rows.length === 0) {
+        
+        return res.status(200).json({
+          status: "mfa_required",
+          message: "Verifikasi MFA diperlukan",
+          data: {
+            userId: user.id,
+            email: user.email,
+            enabledMethods: enabledMethods,
+            requiresMFA: true
+          },
+          error: { code: "MFA_REQUIRED" },
+          metadata: null
+        });
+      }
+    }
+
+    
     const profileResult = await pool.query(
       "SELECT full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography FROM profile WHERE user_id = $1",
       [user.id]
@@ -984,6 +1017,459 @@ exports.checkResetToken = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
+  }
+};
+
+
+exports.updateEmail = async (req, res) => {
+  const { newEmail } = req.body;
+  const userId = req.user.id; 
+
+  if (!validator.isEmail(newEmail)) {
+    return res.status(400).json({
+      status: "error",
+      message: "Format email tidak valid",
+      data: null,
+      error: { code: "INVALID_EMAIL" },
+      metadata: null
+    });
+  }
+
+  try {
+    
+    const existingEmail = await pool.query(
+      "SELECT * FROM users WHERE email = $1 AND id != $2",
+      [newEmail, userId]
+    );
+    
+    if (existingEmail.rows.length > 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Email sudah digunakan oleh user lain",
+        data: null,
+        error: { code: "EMAIL_EXISTS" },
+        metadata: null
+      });
+    }
+
+    
+    const userRes = await pool.query("SELECT google_id FROM users WHERE id = $1", [userId]);
+    const user = userRes.rows[0];
+    
+    if (user.google_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Akun ini terdaftar melalui Google. Email tidak dapat diubah.",
+        data: null,
+        error: { code: "GOOGLE_AUTH_NO_EMAIL_CHANGE" },
+        metadata: null
+      });
+    }
+
+    
+    await pool.query(
+      "UPDATE users SET email = $1, email_verified = FALSE, updated_at = NOW() WHERE id = $2",
+      [newEmail, userId]
+    );
+
+    
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    
+    
+    await pool.query("DELETE FROM email_verifications WHERE user_id = $1", [userId]);
+    
+    
+    await pool.query(
+      "INSERT INTO email_verifications (user_id, otp_code, expires_at, attempts, verified) VALUES ($1, $2, $3, $4, $5)",
+      [userId, otp, expiresAt, 0, false]
+    );
+
+    
+    const html = `
+      <!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Verifikasi Email Baru - NewsInsight</title>
+    <style>
+      body {
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background-color: #f4f4f7;
+        margin: 0;
+        padding: 0;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 40px auto;
+        background: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      }
+      .header {
+        background: linear-gradient(to right, #3BD5FF, #367AF2);
+        color: white;
+        text-align: center;
+        padding: 30px 20px;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .content {
+        padding: 30px 40px;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .otp-code {
+        font-size: 32px;
+        font-weight: bold;
+        text-align: center;
+        letter-spacing: 8px;
+        margin: 24px 0;
+        background-color: #f0f4ff;
+        padding: 12px 0;
+        border-radius: 6px;
+        color: #2a2a2a;
+      }
+      .footer {
+        font-size: 12px;
+        text-align: center;
+        color: #888;
+        padding: 20px 30px;
+        background-color: #fafafa;
+      }
+      @media only screen and (max-width: 600px) {
+        .content {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Verifikasi Email Baru Anda</h1>
+      </div>
+      <div class="content">
+        <p>Halo,</p>
+        <p>Anda telah mengubah email akun NewsInsight Anda. Untuk mengaktifkan email baru, silakan verifikasi dengan kode di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <div class="otp-code">${otp}</div>
+        <p>Jika Anda tidak melakukan perubahan ini, segera hubungi tim support kami.</p>
+        <p>Salam hangat,<br>Tim NewsInsight</p>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} NewsInsight. Semua hak dilindungi.
+      </div>
+    </div>
+  </body>
+</html>
+    `;
+
+    try {
+      await sendEmail(newEmail, "Verifikasi Email Baru - NewsInsight", html);
+    } catch (err) {
+      console.error("Failed to send email verification:", err);
+      
+      await pool.query(
+        "UPDATE users SET email = (SELECT email FROM users WHERE id = $1), email_verified = TRUE WHERE id = $1",
+        [userId]
+      );
+      return res.status(500).json({
+        status: "error",
+        message: "Gagal mengirim email verifikasi. Perubahan email dibatalkan.",
+        data: null,
+        error: { code: "EMAIL_SEND_FAILED" },
+        metadata: null
+      });
+    }
+
+    res.json({
+      status: "success",
+      message: "Email berhasil diubah. Silakan cek email baru Anda untuk verifikasi.",
+      data: {
+        newEmail: newEmail,
+        requiresVerification: true
+      },
+      error: null,
+      metadata: null
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
+  }
+};
+
+
+exports.updatePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user.id; 
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({
+      status: "error",
+      message: "Password lama dan password baru wajib diisi",
+      data: null,
+      error: { code: "PASSWORDS_REQUIRED" },
+      metadata: null
+    });
+  }
+
+  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
+  if (!passwordRegex.test(newPassword)) {
+    return res.status(400).json({
+      status: "error",
+      message: "Gunakan minimal 8 karakter dengan kombinasi huruf dan angka",
+      data: null,
+      error: { code: "WEAK_PASSWORD" },
+      metadata: null
+    });
+  }
+
+  try {
+    
+    const userRes = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+    const user = userRes.rows[0];
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User tidak ditemukan",
+        data: null,
+        error: { code: "USER_NOT_FOUND" },
+        metadata: null
+      });
+    }
+
+    
+    if (user.google_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Akun ini terdaftar melalui Google. Password tidak dapat diubah.",
+        data: null,
+        error: { code: "GOOGLE_AUTH_NO_PASSWORD_CHANGE" },
+        metadata: null
+      });
+    }
+
+    
+    const validCurrentPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!validCurrentPassword) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password lama tidak benar",
+        data: null,
+        error: { code: "INVALID_CURRENT_PASSWORD" },
+        metadata: null
+      });
+    }
+
+    
+    const samePassword = await bcrypt.compare(newPassword, user.password);
+    if (samePassword) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password baru harus berbeda dengan password lama",
+        data: null,
+        error: { code: "SAME_PASSWORD" },
+        metadata: null
+      });
+    }
+
+    
+    const salt = await bcrypt.genSalt(10);
+    const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+    
+    await pool.query(
+      "UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2",
+      [hashedNewPassword, userId]
+    );
+
+    res.json({
+      status: "success",
+      message: "Password berhasil diubah",
+      data: null,
+      error: null,
+      metadata: null
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
+  }
+};
+
+
+exports.getUserInfo = async (req, res) => {
+  const userId = req.user.id; 
+
+  try {
+    
+    const userRes = await pool.query(
+      "SELECT id, email, username, role, google_id, email_verified, created_at, updated_at FROM users WHERE id = $1", 
+      [userId]
+    );
+    const user = userRes.rows[0];
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User tidak ditemukan",
+        data: null,
+        error: { code: "USER_NOT_FOUND" },
+        metadata: null
+      });
+    }
+
+    res.json({
+      status: "success",
+      message: "User info berhasil diambil",
+      data: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        role: user.role,
+        google_id: user.google_id,
+        email_verified: user.email_verified,
+        created_at: user.created_at,
+        updated_at: user.updated_at
+      },
+      error: null,
+      metadata: null
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      status: "error",
+      message: "Terjadi kesalahan pada server",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
+  }
+};
+
+exports.verifyMfaToken = async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({
+        status: "error",
+        message: "Token MFA tidak ditemukan",
+        data: null,
+        error: { code: "MFA_TOKEN_MISSING" },
+        metadata: null
+      });
+    }
+
+    
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({
+        status: "error",
+        message: "Token MFA tidak valid atau telah kedaluwarsa",
+        data: null,
+        error: { code: "INVALID_MFA_TOKEN" },
+        metadata: null
+      });
+    }
+
+    
+    if (!decoded.mfaVerified || !decoded.userId) {
+      return res.status(401).json({
+        status: "error",
+        message: "Token MFA tidak valid",
+        data: null,
+        error: { code: "INVALID_MFA_TOKEN" },
+        metadata: null
+      });
+    }
+
+    
+    const userResult = await pool.query(
+      "SELECT id, email, username, role, email_verified FROM users WHERE id = $1",
+      [decoded.userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "User tidak ditemukan",
+        data: null,
+        error: { code: "USER_NOT_FOUND" },
+        metadata: null
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    
+    const profileResult = await pool.query(
+      "SELECT full_name, biography, avatar, headline FROM profile WHERE user_id = $1",
+      [user.id]
+    );
+
+    const profile = profileResult.rows[0] || {};
+
+    
+    const sessionToken = jwt.sign(
+      { 
+        userId: user.id, 
+        email: user.email, 
+        username: user.username, 
+        role: user.role 
+      },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.json({
+      status: "success",
+      message: "Token MFA berhasil diverifikasi",
+      data: {
+        token: sessionToken,
+        account: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+          email_verified: user.email_verified,
+          full_name: profile.full_name || null,
+          biography: profile.biography || null,
+          avatar: profile.avatar || null,
+          headline: profile.headline || null
+        }
+      },
+      error: null,
+      metadata: null
+    });
+
+  } catch (err) {
+    console.error("Error in verifyMfaToken:", err);
     res.status(500).json({
       status: "error",
       message: "Terjadi kesalahan pada server",
