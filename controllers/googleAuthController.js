@@ -76,8 +76,7 @@ exports.googleAuth = async (req, res) => {
       console.log(`Returning Google user: ${email}`);
     }
 
-    
-    const token = jwt.sign(
+      const token = jwt.sign(
       {
         id: user.id,
         role: user.role,
@@ -85,7 +84,7 @@ exports.googleAuth = async (req, res) => {
         username: user.username,
       },
       JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "24h" }
     );    res.json({
       status: "success",
       message: isNewUser ? "Selamat datang di NewsInsight!" : "Selamat datang kembali!",
@@ -102,7 +101,7 @@ exports.googleAuth = async (req, res) => {
         },
         token,
         isNewUser,
-        expiresIn: 7200
+        expiresIn: 86400
       },
       error: null,
       metadata: null

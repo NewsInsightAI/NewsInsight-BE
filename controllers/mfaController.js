@@ -336,86 +336,84 @@ exports.disableMFAMethod = async (req, res) => {
 exports.sendMFACode = async (req, res) => {
   const { method, tempToken, purpose } = req.body;
 
-  if (!method || !['email', 'sms'].includes(method)) {
+  if (!method || !["email", "sms"].includes(method)) {
     return res.status(400).json({
       status: "error",
       message: "Method tidak valid",
       data: null,
       error: { code: "INVALID_METHOD" },
-      metadata: null
+      metadata: null,
     });
   }
 
   try {
     let userId;
-    
-    
+
     if (purpose === "login" && tempToken) {
-      
       const tempTokenResult = await pool.query(
         "SELECT user_id FROM temp_tokens WHERE token = $1 AND expires_at > NOW() AND used = FALSE",
         [tempToken]
       );
-      
+
       if (tempTokenResult.rows.length === 0) {
         return res.status(400).json({
           status: "error",
           message: "Token tidak valid atau sudah kedaluwarsa",
           data: null,
           error: { code: "INVALID_TOKEN" },
-          metadata: null
+          metadata: null,
         });
       }
-      
+
       userId = tempTokenResult.rows[0].user_id;
     } else {
-      
       if (!req.user || !req.user.id) {
         return res.status(401).json({
           status: "error",
           message: "Akses ditolak",
           data: null,
           error: { code: "UNAUTHORIZED" },
-          metadata: null
+          metadata: null,
         });
       }
       userId = req.user.id;
     }
 
-    
     const mfaResult = await pool.query(
       "SELECT enabled_methods FROM mfa_settings WHERE user_id = $1 AND is_enabled = TRUE",
       [userId]
     );
 
-    if (mfaResult.rows.length === 0 || !mfaResult.rows[0].enabled_methods.includes(method)) {
+    if (
+      mfaResult.rows.length === 0 ||
+      !mfaResult.rows[0].enabled_methods.includes(method)
+    ) {
       return res.status(400).json({
         status: "error",
         message: `MFA ${method} tidak diaktifkan`,
         data: null,
         error: { code: "MFA_NOT_ENABLED" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     const code = generateMFACode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); 
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    
     await pool.query(
       "INSERT INTO mfa_attempts (user_id, method, code, expires_at) VALUES ($1, $2, $3, $4)",
       [userId, method, code, expiresAt]
     );
 
-    if (method === 'email') {
-      
-      const userRes = await pool.query("SELECT email FROM users WHERE id = $1", [userId]);
+    if (method === "email") {
+      const userRes = await pool.query(
+        "SELECT email FROM users WHERE id = $1",
+        [userId]
+      );
       const email = userRes.rows[0].email;
 
-      
       const { sendEmail } = require("../utils/sendEmail");
-      
+
       const html = `
         <!DOCTYPE html>
         <html>
@@ -430,7 +428,7 @@ exports.sendMFACode = async (req, res) => {
             <div style="font-size: 24px; font-weight: bold; color: #367AF2; text-align: center; margin: 20px 0;">
               ${code}
             </div>
-            <p>Kode ini akan kedaluwarsa dalam 10 menit.</p>
+            <p>Kode ini akan kedaluwarsa dalam 30 menit.</p>
             <p>Jika Anda tidak meminta kode ini, abaikan email ini.</p>
           </div>
         </body>
@@ -445,10 +443,10 @@ exports.sendMFACode = async (req, res) => {
       message: `Kode MFA telah dikirim melalui ${method}`,
       data: {
         method: method,
-        expiresAt: expiresAt
+        expiresAt: expiresAt,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error("Send MFA code error:", err);
@@ -457,11 +455,10 @@ exports.sendMFACode = async (req, res) => {
       message: "Terjadi kesalahan saat mengirim kode MFA",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.verifyMFACode = async (req, res) => {
   const { userId, method, code } = req.body;
@@ -472,13 +469,12 @@ exports.verifyMFACode = async (req, res) => {
       message: "UserId, method, dan code wajib diisi",
       data: null,
       error: { code: "REQUIRED_FIELDS" },
-      metadata: null
+      metadata: null,
     });
   }
 
   try {
-    if (method === 'totp') {
-      
+    if (method === "totp") {
       const secretResult = await pool.query(
         "SELECT secret_key FROM mfa_settings WHERE user_id = $1",
         [userId]
@@ -490,15 +486,15 @@ exports.verifyMFACode = async (req, res) => {
           message: "TOTP tidak dikonfigurasi",
           data: null,
           error: { code: "TOTP_NOT_CONFIGURED" },
-          metadata: null
+          metadata: null,
         });
       }
 
       const verified = speakeasy.totp.verify({
         secret: secretResult.rows[0].secret_key,
-        encoding: 'base32',
+        encoding: "base32",
         token: code,
-        window: 2
+        window: 2,
       });
 
       if (!verified) {
@@ -507,11 +503,10 @@ exports.verifyMFACode = async (req, res) => {
           message: "Kode TOTP tidak valid",
           data: null,
           error: { code: "INVALID_TOTP" },
-          metadata: null
+          metadata: null,
         });
       }
-    } else if (method === 'backup_code') {
-      
+    } else if (method === "backup_code") {
       const backupResult = await pool.query(
         "SELECT backup_codes FROM mfa_settings WHERE user_id = $1",
         [userId]
@@ -523,7 +518,7 @@ exports.verifyMFACode = async (req, res) => {
           message: "Backup codes tidak ditemukan",
           data: null,
           error: { code: "BACKUP_CODES_NOT_FOUND" },
-          metadata: null
+          metadata: null,
         });
       }
 
@@ -534,18 +529,16 @@ exports.verifyMFACode = async (req, res) => {
           message: "Backup code tidak valid",
           data: null,
           error: { code: "INVALID_BACKUP_CODE" },
-          metadata: null
+          metadata: null,
         });
       }
 
-      
-      const updatedCodes = backupCodes.filter(c => c !== code.toUpperCase());
+      const updatedCodes = backupCodes.filter((c) => c !== code.toUpperCase());
       await pool.query(
         "UPDATE mfa_settings SET backup_codes = $1 WHERE user_id = $2",
         [updatedCodes, userId]
       );
     } else {
-      
       const codeResult = await pool.query(
         "SELECT * FROM mfa_attempts WHERE user_id = $1 AND method = $2 AND code = $3 AND expires_at > NOW() AND is_used = FALSE ORDER BY created_at DESC LIMIT 1",
         [userId, method, code]
@@ -557,15 +550,13 @@ exports.verifyMFACode = async (req, res) => {
           message: "Kode tidak valid atau sudah kedaluwarsa",
           data: null,
           error: { code: "INVALID_OR_EXPIRED_CODE" },
-          metadata: null
+          metadata: null,
         });
       }
 
-      
-      await pool.query(
-        "UPDATE mfa_attempts SET is_used = TRUE WHERE id = $1",
-        [codeResult.rows[0].id]
-      );
+      await pool.query("UPDATE mfa_attempts SET is_used = TRUE WHERE id = $1", [
+        codeResult.rows[0].id,
+      ]);
     }
 
     res.json({
@@ -573,10 +564,10 @@ exports.verifyMFACode = async (req, res) => {
       message: "Verifikasi MFA berhasil",
       data: {
         verified: true,
-        method: method
+        method: method,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error("Verify MFA code error:", err);
@@ -585,11 +576,10 @@ exports.verifyMFACode = async (req, res) => {
       message: "Terjadi kesalahan saat verifikasi MFA",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.getBackupCodes = async (req, res) => {
   const userId = req.user.id;
@@ -606,7 +596,7 @@ exports.getBackupCodes = async (req, res) => {
         message: "MFA tidak dikonfigurasi",
         data: null,
         error: { code: "MFA_NOT_CONFIGURED" },
-        metadata: null
+        metadata: null,
       });
     }
 
@@ -617,10 +607,10 @@ exports.getBackupCodes = async (req, res) => {
       message: "Backup codes berhasil diambil",
       data: {
         backupCodes: backupCodes,
-        remaining: backupCodes.length
+        remaining: backupCodes.length,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error("Get backup codes error:", err);
@@ -629,11 +619,10 @@ exports.getBackupCodes = async (req, res) => {
       message: "Terjadi kesalahan saat mengambil backup codes",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.generateNewBackupCodes = async (req, res) => {
   const userId = req.user.id;
@@ -650,10 +639,10 @@ exports.generateNewBackupCodes = async (req, res) => {
       status: "success",
       message: "Backup codes baru berhasil dibuat",
       data: {
-        backupCodes: newBackupCodes
+        backupCodes: newBackupCodes,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error("Generate new backup codes error:", err);
@@ -662,11 +651,10 @@ exports.generateNewBackupCodes = async (req, res) => {
       message: "Terjadi kesalahan saat membuat backup codes baru",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.verifyMFALogin = async (req, res) => {
   const { userId, code, method, trustDevice } = req.body;
@@ -677,13 +665,14 @@ exports.verifyMFALogin = async (req, res) => {
       message: "User ID dan kode verifikasi wajib diisi",
       data: null,
       error: { code: "MISSING_PARAMETERS" },
-      metadata: null
+      metadata: null,
     });
   }
 
   try {
-    
-    const userRes = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+    const userRes = await pool.query("SELECT * FROM users WHERE id = $1", [
+      userId,
+    ]);
     const user = userRes.rows[0];
 
     if (!user) {
@@ -692,14 +681,14 @@ exports.verifyMFALogin = async (req, res) => {
         message: "User tidak ditemukan",
         data: null,
         error: { code: "USER_NOT_FOUND" },
-        metadata: null
+        metadata: null,
       });
     }
 
     let isValid = false;
     let backupCodeUsed = false;
 
-    if (method === "backup" || (!method && code.length > 6)) {      
+    if (method === "backup" || (!method && code.length > 6)) {
       const backupResult = await pool.query(
         "SELECT backup_codes FROM mfa_settings WHERE user_id = $1",
         [userId]
@@ -710,18 +699,18 @@ exports.verifyMFALogin = async (req, res) => {
         if (backupCodes.includes(code.toUpperCase())) {
           isValid = true;
           backupCodeUsed = true;
-          
-          
-          const updatedCodes = backupCodes.filter(c => c !== code.toUpperCase());
+
+          const updatedCodes = backupCodes.filter(
+            (c) => c !== code.toUpperCase()
+          );
           await pool.query(
             "UPDATE mfa_settings SET backup_codes = $1 WHERE user_id = $2",
             [updatedCodes, userId]
           );
         }
-      }    } else {
-      
+      }
+    } else {
       if (method === "totp") {
-        
         const mfaSettingRes = await pool.query(
           "SELECT secret_key FROM mfa_settings WHERE user_id = $1 AND enabled_methods @> $2",
           [userId, '{"totp"}']
@@ -731,13 +720,12 @@ exports.verifyMFALogin = async (req, res) => {
           const secret = mfaSettingRes.rows[0].secret_key;
           isValid = speakeasy.totp.verify({
             secret: secret,
-            encoding: 'base32',
+            encoding: "base32",
             token: code,
-            window: 2
+            window: 2,
           });
         }
       } else if (method === "email") {
-        
         const attemptRes = await pool.query(
           "SELECT id FROM mfa_attempts WHERE user_id = $1 AND code = $2 AND method = 'email' AND expires_at > NOW() AND is_used = false ORDER BY created_at DESC LIMIT 1",
           [userId, code]
@@ -745,8 +733,7 @@ exports.verifyMFALogin = async (req, res) => {
 
         if (attemptRes.rows.length > 0) {
           isValid = true;
-          
-          
+
           await pool.query(
             "UPDATE mfa_attempts SET is_used = true WHERE id = $1",
             [attemptRes.rows[0].id]
@@ -761,20 +748,19 @@ exports.verifyMFALogin = async (req, res) => {
         message: "Kode verifikasi tidak valid atau sudah kedaluwarsa",
         data: null,
         error: { code: "INVALID_MFA_CODE" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     if (trustDevice && !backupCodeUsed) {
-      const deviceFingerprint = req.headers['user-agent'] || 'unknown';
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); 
-      
+      const deviceFingerprint = req.headers["user-agent"] || "unknown";
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
       await pool.query(
         "INSERT INTO trusted_devices (user_id, device_fingerprint, expires_at) VALUES ($1, $2, $3) ON CONFLICT (user_id, device_fingerprint) DO UPDATE SET expires_at = $3",
         [userId, deviceFingerprint, expiresAt]
       );
-    }    
+    }
     const token = jwt.sign(
       {
         userId: user.id,
@@ -782,22 +768,21 @@ exports.verifyMFALogin = async (req, res) => {
         role: user.role,
         email: user.email,
         username: user.username,
-        mfaVerified: true
+        mfaVerified: true,
       },
-      process.env.JWT_SECRET || 'defaultsecret',
-      { expiresIn: "2h" }
+      process.env.JWT_SECRET || "defaultsecret",
+      { expiresIn: "24h" }
     );
 
-    
     const profileResult = await pool.query(
       "SELECT full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography FROM profile WHERE user_id = $1",
       [user.id]
     );
-    
+
     let isProfileComplete = false;
     if (profileResult.rows.length > 0) {
       const profile = profileResult.rows[0];
-      
+
       isProfileComplete = !!(
         profile.full_name &&
         profile.gender &&
@@ -822,16 +807,15 @@ exports.verifyMFALogin = async (req, res) => {
           isProfileComplete: isProfileComplete,
           createdAt: user.created_at,
           updatedAt: user.updated_at,
-          role: user.role
+          role: user.role,
         },
         token,
-        expiresIn: 7200,
-        backupCodeUsed: backupCodeUsed
+        expiresIn: 86400,
+        backupCodeUsed: backupCodeUsed,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
-
   } catch (error) {
     console.error("Error verifying MFA login:", error);
     res.status(500).json({
@@ -839,7 +823,7 @@ exports.verifyMFALogin = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };

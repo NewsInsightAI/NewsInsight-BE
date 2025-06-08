@@ -309,128 +309,138 @@ exports.updateMyProfile = async (req, res) => {
   }
   
   try {
-    
     const existingProfile = await pool.query(
       "SELECT * FROM profile WHERE user_id = $1",
       [userId]
     );
-    
+
     if (existingProfile.rows.length === 0) {
-        const result = await pool.query(
+      const result = await pool.query(
         `INSERT INTO profile (user_id, full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography, avatar, last_education, work_experience, cv_file, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
          RETURNING *`,
-        [userId, full_name, gender, date_of_birth, phone_number, domicile, processedNewsInterest, headline, biography, avatar, last_education, work_experience, cv_file]
+        [
+          userId,
+          full_name,
+          gender,
+          date_of_birth,
+          phone_number,
+          domicile,
+          processedNewsInterest,
+          headline,
+          biography,
+          avatar,
+          last_education,
+          work_experience,
+          cv_file,
+        ]
       );
-      
+
       return res.json({
         status: "success",
         message: "Profile berhasil dibuat",
         data: result.rows[0],
         error: null,
-        metadata: null
+        metadata: null,
       });
     }
-    
-    
+
     const updateFields = [];
     const updateValues = [];
     let paramIndex = 1;
-    
+
     if (full_name !== undefined) {
       updateFields.push(`full_name = $${paramIndex}`);
       updateValues.push(full_name);
       paramIndex++;
     }
-    
+
     if (username !== undefined) {
-      
-      
     }
-    
+
     if (gender !== undefined) {
       updateFields.push(`gender = $${paramIndex}`);
       updateValues.push(gender);
       paramIndex++;
     }
-    
+
     if (date_of_birth !== undefined) {
       updateFields.push(`date_of_birth = $${paramIndex}`);
       updateValues.push(date_of_birth);
       paramIndex++;
     }
-    
+
     if (phone_number !== undefined) {
       updateFields.push(`phone_number = $${paramIndex}`);
       updateValues.push(phone_number);
       paramIndex++;
     }
-    
+
     if (domicile !== undefined) {
       updateFields.push(`domicile = $${paramIndex}`);
       updateValues.push(domicile);
       paramIndex++;
     }
-    
+
     if (processedNewsInterest !== undefined) {
       updateFields.push(`news_interest = $${paramIndex}`);
       updateValues.push(processedNewsInterest);
       paramIndex++;
     }
-    
+
     if (headline !== undefined) {
       updateFields.push(`headline = $${paramIndex}`);
       updateValues.push(headline);
       paramIndex++;
     }
-    
+
     if (biography !== undefined) {
       updateFields.push(`biography = $${paramIndex}`);
       updateValues.push(biography);
       paramIndex++;
     }
-      if (avatar !== undefined) {
+    if (avatar !== undefined) {
       updateFields.push(`avatar = $${paramIndex}`);
       updateValues.push(avatar);
       paramIndex++;
     }
-    
+
     if (last_education !== undefined) {
       updateFields.push(`last_education = $${paramIndex}`);
       updateValues.push(last_education);
       paramIndex++;
     }
-    
+
     if (work_experience !== undefined) {
       updateFields.push(`work_experience = $${paramIndex}`);
       updateValues.push(work_experience);
       paramIndex++;
     }
-    
+
     if (cv_file !== undefined) {
       updateFields.push(`cv_file = $${paramIndex}`);
       updateValues.push(cv_file);
       paramIndex++;
     }
-    
-    // Always update the updated_at field
+
     updateFields.push(`updated_at = NOW()`);
-    
-    if (updateFields.length === 1) { 
+
+    if (updateFields.length === 1) {
       return res.status(400).json({
         status: "error",
         message: "No fields to update",
         data: null,
         error: { code: "NO_FIELDS_TO_UPDATE" },
-        metadata: null
+        metadata: null,
       });
     }
-    
-    
+
     updateValues.push(userId);
-    
-    const query = `UPDATE profile SET ${updateFields.join(', ')} WHERE user_id = $${paramIndex} RETURNING *`;
-    
+
+    const query = `UPDATE profile SET ${updateFields.join(
+      ", "
+    )} WHERE user_id = $${paramIndex} RETURNING *`;
+
     const result = await pool.query(query, updateValues);
 
     res.json({
@@ -438,7 +448,7 @@ exports.updateMyProfile = async (req, res) => {
       message: "Profile berhasil diperbarui",
       data: result.rows[0],
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error("Profile update error:", err);

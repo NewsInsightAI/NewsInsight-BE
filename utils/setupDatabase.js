@@ -21,19 +21,17 @@ async function runMigration(migrationFile) {
 async function setupCitiesDatabase() {
   try {
     console.log("🚀 Setting up cities database...");
-    
-    // Run the cities migration
-    await runMigration('create_cities_tables.sql');
-    
+
+    await runMigration("create_cities_tables.sql");
+
     console.log("✅ Cities database setup completed!");
-    
   } catch (error) {
     console.error("❌ Database setup failed:", error);
     throw error;
   }
 }
 
-// Run setup if this script is executed directly
+
 if (require.main === module) {
   setupCitiesDatabase()
     .then(() => {

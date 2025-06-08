@@ -76,7 +76,7 @@ exports.register = async (req, res) => {
 
     
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); 
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     const html = `
       <!DOCTYPE html>
 <html lang="id">
@@ -146,7 +146,7 @@ exports.register = async (req, res) => {
       </div>
       <div class="content">
         <p>Halo,</p>
-        <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>30 menit</strong>:</p>
         <div class="otp-code">${otp}</div>
         <p>Jika Anda tidak meminta kode ini, abaikan saja email ini. Tidak ada perubahan yang akan dilakukan.</p>
         <p>Salam hangat,<br>Tim NewsInsight</p>
@@ -224,7 +224,7 @@ exports.login = async (req, res) => {
       message: "Email/username wajib diisi",
       data: null,
       error: { code: "IDENTIFIER_REQUIRED" },
-      metadata: null
+      metadata: null,
     });
   }
   if (!password || typeof password !== "string" || password.trim() === "") {
@@ -233,7 +233,7 @@ exports.login = async (req, res) => {
       message: "Password wajib diisi",
       data: null,
       error: { code: "PASSWORD_REQUIRED" },
-      metadata: null
+      metadata: null,
     });
   }
 
@@ -256,17 +256,17 @@ exports.login = async (req, res) => {
         message: "Email/username atau password salah",
         data: null,
         error: { code: "INVALID_CREDENTIALS" },
-        metadata: null
+        metadata: null,
       });
 
-    
     if (user.google_id) {
       return res.status(400).json({
         status: "error",
-        message: "Akun ini terdaftar melalui Google. Silakan login menggunakan Google.",
+        message:
+          "Akun ini terdaftar melalui Google. Silakan login menggunakan Google.",
         data: null,
         error: { code: "GOOGLE_AUTH_REQUIRED" },
-        metadata: null
+        metadata: null,
       });
     }
 
@@ -277,35 +277,33 @@ exports.login = async (req, res) => {
         message: "Email/username atau password salah",
         data: null,
         error: { code: "INVALID_CREDENTIALS" },
-        metadata: null
+        metadata: null,
       });
 
-    
     if (!user.email_verified) {
-      
       const otpRes = await pool.query(
         "SELECT id, otp_code, expires_at FROM email_verifications WHERE user_id = $1 AND verified = FALSE ORDER BY expires_at DESC LIMIT 1",
         [user.id]
       );
-      let otp, expiresAt, otpResent = false;
+      let otp,
+        expiresAt,
+        otpResent = false;
       const now = new Date();
       if (otpRes.rows.length > 0 && new Date(otpRes.rows[0].expires_at) > now) {
-        
         otp = otpRes.rows[0].otp_code;
         expiresAt = otpRes.rows[0].expires_at;
-        
+
         otpResent = false;
       } else {
-        
         otp = generateOTP();
-        expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        expiresAt = new Date(Date.now() + 30 * 60 * 1000);
         await pool.query(
           "INSERT INTO email_verifications (user_id, otp_code, expires_at, attempts, verified) VALUES ($1, $2, $3, $4, $5)",
           [user.id, otp, expiresAt, 0, false]
         );
         otpResent = true;
       }
-      
+
       if (otpResent) {
         const html = `
           <!DOCTYPE html>
@@ -376,7 +374,7 @@ exports.login = async (req, res) => {
       </div>
       <div class="content">
         <p>Halo, ${user.email}!</p>
-        <p>Sebelum Anda dapat mengakses akun, silakan verifikasi email Anda menggunakan kode di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <p>Sebelum Anda dapat mengakses akun, silakan verifikasi email Anda menggunakan kode di bawah ini. Kode berlaku selama <strong>30 menit</strong>:</p>
         <div class="otp-code">${otp}</div>
         <p>Jika Anda tidak mencoba login, abaikan pesan ini.</p>
         <p>Salam hangat,<br>Tim NewsInsight</p>
@@ -396,35 +394,32 @@ exports.login = async (req, res) => {
       }
       return res.status(403).json({
         status: "unverified",
-        message: "Email belum diverifikasi. Silakan cek email untuk kode verifikasi.",
+        message:
+          "Email belum diverifikasi. Silakan cek email untuk kode verifikasi.",
         data: {
           userId: user.id,
           email: user.email,
-          otpResent
+          otpResent,
         },
         error: { code: "EMAIL_UNVERIFIED" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     const mfaSettingsRes = await pool.query(
       "SELECT enabled_methods, is_enabled FROM mfa_settings WHERE user_id = $1 AND is_enabled = true",
       [user.id]
     );
 
     if (mfaSettingsRes.rows.length > 0) {
-      
       const enabledMethods = mfaSettingsRes.rows[0].enabled_methods || [];
-      
-      
+
       const trustedDeviceRes = await pool.query(
         "SELECT id FROM trusted_devices WHERE user_id = $1 AND expires_at > NOW() AND device_fingerprint = $2",
-        [user.id, req.headers['user-agent'] || 'unknown'] 
+        [user.id, req.headers["user-agent"] || "unknown"]
       );
 
       if (trustedDeviceRes.rows.length === 0) {
-        
         return res.status(200).json({
           status: "mfa_required",
           message: "Verifikasi MFA diperlukan",
@@ -432,24 +427,23 @@ exports.login = async (req, res) => {
             userId: user.id,
             email: user.email,
             enabledMethods: enabledMethods,
-            requiresMFA: true
+            requiresMFA: true,
           },
           error: { code: "MFA_REQUIRED" },
-          metadata: null
+          metadata: null,
         });
       }
     }
 
-    
     const profileResult = await pool.query(
       "SELECT full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography FROM profile WHERE user_id = $1",
       [user.id]
     );
-    
+
     let isProfileComplete = false;
     if (profileResult.rows.length > 0) {
       const profile = profileResult.rows[0];
-      
+
       isProfileComplete = !!(
         profile.full_name &&
         profile.gender &&
@@ -470,7 +464,7 @@ exports.login = async (req, res) => {
         username: user.username,
       },
       JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "24h" }
     );
 
     res.json({
@@ -485,13 +479,13 @@ exports.login = async (req, res) => {
           isProfileComplete: isProfileComplete,
           createdAt: user.created_at,
           updatedAt: user.updated_at,
-          role: user.role
+          role: user.role,
         },
         token,
-        expiresIn: 7200 
+        expiresIn: 86400,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -500,7 +494,7 @@ exports.login = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
@@ -508,7 +502,6 @@ exports.login = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   const { userId, otp } = req.body;
 
-  
   const result = await pool.query(
     "SELECT id, otp_code, expires_at, attempts FROM email_verifications WHERE user_id = $1 AND otp_code = $2 AND verified = FALSE",
     [userId, otp]
@@ -521,10 +514,9 @@ exports.verifyEmail = async (req, res) => {
       message: "Kode tidak valid atau sudah expired",
       data: null,
       error: { code: "INVALID_OR_EXPIRED_OTP" },
-      metadata: null
+      metadata: null,
     });
 
-  
   if (record.attempts >= 5) {
     await pool.query("DELETE FROM email_verifications WHERE id = $1", [
       record.id,
@@ -534,7 +526,7 @@ exports.verifyEmail = async (req, res) => {
       message: "Terlalu banyak percobaan gagal. Silakan minta kode baru.",
       data: null,
       error: { code: "OTP_ATTEMPTS_EXCEEDED" },
-      metadata: null
+      metadata: null,
     });
   }
 
@@ -547,11 +539,10 @@ exports.verifyEmail = async (req, res) => {
       message: "Kode sudah expired",
       data: null,
       error: { code: "OTP_EXPIRED" },
-      metadata: null
+      metadata: null,
     });
   }
 
-  
   await pool.query(
     "UPDATE email_verifications SET verified = TRUE WHERE id = $1",
     [record.id]
@@ -567,7 +558,7 @@ exports.verifyEmail = async (req, res) => {
     message: "Email berhasil diverifikasi",
     data: null,
     error: null,
-    metadata: null
+    metadata: null,
   });
 };
 
@@ -578,50 +569,53 @@ exports.resendOtp = async (req, res) => {
     if (userId) {
       userRes = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
     } else if (email) {
-      userRes = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+      userRes = await pool.query("SELECT * FROM users WHERE email = $1", [
+        email,
+      ]);
     } else {
       return res.status(400).json({ message: "userId atau email wajib diisi" });
     }
     const user = userRes.rows[0];
-    if (!user) return res.status(404).json({
-      status: "error",
-      message: "User tidak ditemukan",
-      data: null,
-      error: { code: "USER_NOT_FOUND" },
-      metadata: null
-    });
+    if (!user)
+      return res.status(404).json({
+        status: "error",
+        message: "User tidak ditemukan",
+        data: null,
+        error: { code: "USER_NOT_FOUND" },
+        metadata: null,
+      });
     if (user.email_verified) {
       return res.status(400).json({
         status: "error",
         message: "Email sudah diverifikasi",
         data: null,
         error: { code: "EMAIL_ALREADY_VERIFIED" },
-        metadata: null
+        metadata: null,
       });
     }
-    
+
     const otpRes = await pool.query(
       "SELECT id, otp_code, expires_at FROM email_verifications WHERE user_id = $1 AND verified = FALSE ORDER BY expires_at DESC LIMIT 1",
       [user.id]
     );
-    let otp, expiresAt, otpResent = false;
+    let otp,
+      expiresAt,
+      otpResent = false;
     const now = new Date();
     if (otpRes.rows.length > 0 && new Date(otpRes.rows[0].expires_at) > now) {
-      
       otp = otpRes.rows[0].otp_code;
       expiresAt = otpRes.rows[0].expires_at;
       otpResent = false;
     } else {
-      
       otp = generateOTP();
-      expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      expiresAt = new Date(Date.now() + 30 * 60 * 1000);
       await pool.query(
         "INSERT INTO email_verifications (user_id, otp_code, expires_at, attempts, verified) VALUES ($1, $2, $3, $4, $5)",
         [user.id, otp, expiresAt, 0, false]
       );
       otpResent = true;
     }
-    
+
     const html = `
       <!DOCTYPE html>
 <html lang="id">
@@ -691,7 +685,7 @@ exports.resendOtp = async (req, res) => {
       </div>
       <div class="content">
         <p>Halo, ${user.email}!</p>
-        <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <p>Untuk menyelesaikan pendaftaran, gunakan kode verifikasi di bawah ini. Kode berlaku selama <strong>30 menit</strong>:</p>
         <div class="otp-code">${otp}</div>
         <p>Jika Anda tidak meminta kode ini, abaikan saja email ini. Tidak ada perubahan yang akan dilakukan.</p>
         <p>Salam hangat,<br>Tim NewsInsight</p>
@@ -712,7 +706,7 @@ exports.resendOtp = async (req, res) => {
         message: "Gagal mengirim email OTP",
         data: null,
         error: { code: "EMAIL_SEND_FAILED" },
-        metadata: null
+        metadata: null,
       });
     }
     return res.json({
@@ -721,10 +715,10 @@ exports.resendOtp = async (req, res) => {
       data: {
         userId: user.id,
         email: user.email,
-        otpResent
+        otpResent,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -733,11 +727,10 @@ exports.resendOtp = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.requestResetPassword = async (req, res) => {
   const { email } = req.body;
@@ -747,41 +740,43 @@ exports.requestResetPassword = async (req, res) => {
       message: "Format email tidak valid",
       data: null,
       error: { code: "INVALID_EMAIL" },
-      metadata: null
+      metadata: null,
     });
   }
   try {
-    const userRes = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const userRes = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
     const user = userRes.rows[0];
-    if (!user) return res.status(404).json({
-      status: "error",
-      message: "Email tidak ditemukan",
-      data: null,
-      error: { code: "EMAIL_NOT_FOUND" },
-      metadata: null
-    });
+    if (!user)
+      return res.status(404).json({
+        status: "error",
+        message: "Email tidak ditemukan",
+        data: null,
+        error: { code: "EMAIL_NOT_FOUND" },
+        metadata: null,
+      });
 
-    
     if (user.google_id) {
       return res.status(400).json({
         status: "error",
-        message: "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
+        message:
+          "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
         data: null,
         error: { code: "GOOGLE_AUTH_NO_PASSWORD" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); 
-    
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
     await pool.query(
       `INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)
        ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3`,
       [user.id, token, expiresAt]
     );
-    
+
     const resetLink = `https://newsinsight.space/reset-password?token=${token}`;
     const html = `
       <!DOCTYPE html>
@@ -875,7 +870,7 @@ exports.requestResetPassword = async (req, res) => {
         message: "Gagal mengirim email reset password",
         data: null,
         error: { code: "EMAIL_SEND_FAILED" },
-        metadata: null
+        metadata: null,
       });
     }
     res.json({
@@ -883,7 +878,7 @@ exports.requestResetPassword = async (req, res) => {
       message: "Link reset password berhasil dikirim ke email",
       data: null,
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -892,11 +887,10 @@ exports.requestResetPassword = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.resetPassword = async (req, res) => {
   const { token, password } = req.body;
@@ -906,7 +900,7 @@ exports.resetPassword = async (req, res) => {
       message: "Token dan password baru wajib diisi",
       data: null,
       error: { code: "TOKEN_OR_PASSWORD_REQUIRED" },
-      metadata: null
+      metadata: null,
     });
   }
   const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
@@ -916,7 +910,7 @@ exports.resetPassword = async (req, res) => {
       message: "Gunakan minimal 8 karakter dengan kombinasi huruf dan angka",
       data: null,
       error: { code: "WEAK_PASSWORD" },
-      metadata: null
+      metadata: null,
     });
   }
   try {
@@ -931,32 +925,37 @@ exports.resetPassword = async (req, res) => {
         message: "Token tidak valid atau sudah expired",
         data: null,
         error: { code: "INVALID_OR_EXPIRED_TOKEN" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     if (reset.google_id) {
       return res.status(400).json({
         status: "error",
-        message: "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
+        message:
+          "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
         data: null,
         error: { code: "GOOGLE_AUTH_NO_PASSWORD" },
-        metadata: null
+        metadata: null,
       });
     }
-    
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    await pool.query("UPDATE users SET password = $1 WHERE id = $2", [hashedPassword, reset.user_id]);
-    
-    await pool.query("DELETE FROM password_resets WHERE user_id = $1", [reset.user_id]);
+    await pool.query("UPDATE users SET password = $1 WHERE id = $2", [
+      hashedPassword,
+      reset.user_id,
+    ]);
+
+    await pool.query("DELETE FROM password_resets WHERE user_id = $1", [
+      reset.user_id,
+    ]);
     res.json({
       status: "success",
       message: "Password berhasil direset. Silakan login dengan password baru.",
       data: null,
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -965,11 +964,10 @@ exports.resetPassword = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
-
 
 exports.checkResetToken = async (req, res) => {
   const { token } = req.body;
@@ -979,7 +977,7 @@ exports.checkResetToken = async (req, res) => {
       message: "Token wajib diisi",
       data: null,
       error: { code: "TOKEN_REQUIRED" },
-      metadata: null
+      metadata: null,
     });
   }
   try {
@@ -994,18 +992,18 @@ exports.checkResetToken = async (req, res) => {
         message: "Token tidak valid atau sudah expired",
         data: { valid: false },
         error: { code: "INVALID_OR_EXPIRED_TOKEN" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     if (reset.google_id) {
       return res.status(400).json({
         status: "error",
-        message: "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
+        message:
+          "Akun ini terdaftar melalui Google. Reset password tidak diperlukan.",
         data: { valid: false },
         error: { code: "GOOGLE_AUTH_NO_PASSWORD" },
-        metadata: null
+        metadata: null,
       });
     }
     return res.json({
@@ -1013,7 +1011,7 @@ exports.checkResetToken = async (req, res) => {
       message: "Token valid",
       data: { valid: true },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -1022,15 +1020,14 @@ exports.checkResetToken = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
 
-
 exports.updateEmail = async (req, res) => {
   const { newEmail } = req.body;
-  const userId = req.user.id; 
+  const userId = req.user.id;
 
   if (!validator.isEmail(newEmail)) {
     return res.status(400).json({
@@ -1038,61 +1035,59 @@ exports.updateEmail = async (req, res) => {
       message: "Format email tidak valid",
       data: null,
       error: { code: "INVALID_EMAIL" },
-      metadata: null
+      metadata: null,
     });
   }
 
   try {
-    
     const existingEmail = await pool.query(
       "SELECT * FROM users WHERE email = $1 AND id != $2",
       [newEmail, userId]
     );
-    
+
     if (existingEmail.rows.length > 0) {
       return res.status(400).json({
         status: "error",
         message: "Email sudah digunakan oleh user lain",
         data: null,
         error: { code: "EMAIL_EXISTS" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
-    const userRes = await pool.query("SELECT google_id FROM users WHERE id = $1", [userId]);
+    const userRes = await pool.query(
+      "SELECT google_id FROM users WHERE id = $1",
+      [userId]
+    );
     const user = userRes.rows[0];
-    
+
     if (user.google_id) {
       return res.status(400).json({
         status: "error",
         message: "Akun ini terdaftar melalui Google. Email tidak dapat diubah.",
         data: null,
         error: { code: "GOOGLE_AUTH_NO_EMAIL_CHANGE" },
-        metadata: null
+        metadata: null,
       });
     }
 
-    
     await pool.query(
       "UPDATE users SET email = $1, email_verified = FALSE, updated_at = NOW() WHERE id = $2",
       [newEmail, userId]
     );
 
-    
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    
-    
-    await pool.query("DELETE FROM email_verifications WHERE user_id = $1", [userId]);
-    
-    
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await pool.query("DELETE FROM email_verifications WHERE user_id = $1", [
+      userId,
+    ]);
+
     await pool.query(
       "INSERT INTO email_verifications (user_id, otp_code, expires_at, attempts, verified) VALUES ($1, $2, $3, $4, $5)",
       [userId, otp, expiresAt, 0, false]
     );
 
-    
     const html = `
       <!DOCTYPE html>
 <html lang="id">
@@ -1162,7 +1157,7 @@ exports.updateEmail = async (req, res) => {
       </div>
       <div class="content">
         <p>Halo,</p>
-        <p>Anda telah mengubah email akun NewsInsight Anda. Untuk mengaktifkan email baru, silakan verifikasi dengan kode di bawah ini. Kode berlaku selama <strong>10 menit</strong>:</p>
+        <p>Anda telah mengubah email akun NewsInsight Anda. Untuk mengaktifkan email baru, silakan verifikasi dengan kode di bawah ini. Kode berlaku selama <strong>30 menit</strong>:</p>
         <div class="otp-code">${otp}</div>
         <p>Jika Anda tidak melakukan perubahan ini, segera hubungi tim support kami.</p>
         <p>Salam hangat,<br>Tim NewsInsight</p>
@@ -1179,7 +1174,7 @@ exports.updateEmail = async (req, res) => {
       await sendEmail(newEmail, "Verifikasi Email Baru - NewsInsight", html);
     } catch (err) {
       console.error("Failed to send email verification:", err);
-      
+
       await pool.query(
         "UPDATE users SET email = (SELECT email FROM users WHERE id = $1), email_verified = TRUE WHERE id = $1",
         [userId]
@@ -1189,19 +1184,20 @@ exports.updateEmail = async (req, res) => {
         message: "Gagal mengirim email verifikasi. Perubahan email dibatalkan.",
         data: null,
         error: { code: "EMAIL_SEND_FAILED" },
-        metadata: null
+        metadata: null,
       });
     }
 
     res.json({
       status: "success",
-      message: "Email berhasil diubah. Silakan cek email baru Anda untuk verifikasi.",
+      message:
+        "Email berhasil diubah. Silakan cek email baru Anda untuk verifikasi.",
       data: {
         newEmail: newEmail,
-        requiresVerification: true
+        requiresVerification: true,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -1210,7 +1206,7 @@ exports.updateEmail = async (req, res) => {
       message: "Terjadi kesalahan pada server",
       data: null,
       error: { code: "SERVER_ERROR" },
-      metadata: null
+      metadata: null,
     });
   }
 };
