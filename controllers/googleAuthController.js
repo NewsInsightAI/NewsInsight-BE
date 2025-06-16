@@ -71,13 +71,11 @@ exports.googleAuth = async (req, res) => {
         [picture, user.id]
       );
       console.log(`Returning Google user: ${email}`);
-    } // Check if profile is complete for new users
-    let isProfileComplete = true; // Default for existing users
+    }
+    let isProfileComplete = true;
     if (isNewUser) {
-      // For new Google users, profile is not complete yet
       isProfileComplete = false;
     } else {
-      // For existing users, check if profile is actually complete
       const profileResult = await pool.query(
         "SELECT full_name, gender, date_of_birth, phone_number, domicile, news_interest, headline, biography FROM profile WHERE user_id = $1",
         [user.id]
