@@ -105,7 +105,7 @@ exports.getMyProfile = async (req, res) => {  const userId = req.user.id;
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         email: userResult.rows[0].email,
-        username: userResult.rows[0].username
+        username: userResult.rows[0].username || null,
       };
       
       return res.json({

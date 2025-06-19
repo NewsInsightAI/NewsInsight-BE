@@ -461,7 +461,7 @@ exports.login = async (req, res) => {
         id: user.id,
         role: user.role,
         email: user.email,
-        username: user.username,
+        username: user.username || null,
       },
       JWT_SECRET,
       { expiresIn: "24h" }
@@ -473,7 +473,7 @@ exports.login = async (req, res) => {
       data: {
         account: {
           id: user.id,
-          username: user.username,
+          username: user.username || null,
           email: user.email,
           isVerified: user.email_verified,
           isProfileComplete: isProfileComplete,
@@ -1344,15 +1344,15 @@ exports.getUserInfo = async (req, res) => {
       data: {
         id: user.id,
         email: user.email,
-        username: user.username,
+        username: user.username || null,
         role: user.role,
         google_id: user.google_id,
         email_verified: user.email_verified,
         created_at: user.created_at,
-        updated_at: user.updated_at
+        updated_at: user.updated_at,
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
   } catch (err) {
     console.error(err);
@@ -1433,11 +1433,11 @@ exports.verifyMfaToken = async (req, res) => {
 
     
     const sessionToken = jwt.sign(
-      { 
-        userId: user.id, 
-        email: user.email, 
-        username: user.username, 
-        role: user.role 
+      {
+        userId: user.id,
+        email: user.email,
+        username: user.username || null,
+        role: user.role,
       },
       JWT_SECRET,
       { expiresIn: "24h" }
@@ -1451,17 +1451,17 @@ exports.verifyMfaToken = async (req, res) => {
         account: {
           id: user.id,
           email: user.email,
-          username: user.username,
+          username: user.username || null,
           role: user.role,
           email_verified: user.email_verified,
           full_name: profile.full_name || null,
           biography: profile.biography || null,
           avatar: profile.avatar || null,
-          headline: profile.headline || null
-        }
+          headline: profile.headline || null,
+        },
       },
       error: null,
-      metadata: null
+      metadata: null,
     });
 
   } catch (err) {

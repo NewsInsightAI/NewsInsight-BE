@@ -767,7 +767,7 @@ exports.verifyMFALogin = async (req, res) => {
         id: user.id,
         role: user.role,
         email: user.email,
-        username: user.username,
+        username: user.username || null,
         mfaVerified: true,
       },
       process.env.JWT_SECRET || "defaultsecret",
@@ -801,7 +801,7 @@ exports.verifyMFALogin = async (req, res) => {
       data: {
         account: {
           id: user.id,
-          username: user.username,
+          username: user.username || null,
           email: user.email,
           isVerified: user.email_verified,
           isProfileComplete: isProfileComplete,

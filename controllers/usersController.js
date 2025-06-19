@@ -108,7 +108,7 @@ exports.getAllUsers = async (req, res) => {
       data: result.rows.map((user) => ({
         id: user.id,
         fullName: user.full_name || "",
-        username: user.username,
+        username: user.username || null,
         email: user.email,
         role: user.role,
         status: user.status,
@@ -179,7 +179,7 @@ exports.getUserById = async (req, res) => {
       data: {
         id: user.id,
         fullName: user.full_name || "",
-        username: user.username,
+        username: user.username || null,
         email: user.email,
         role: user.role,
         status: user.status,
@@ -260,7 +260,7 @@ exports.createUser = async (req, res) => {
       data: {
         id: newUser.id,
         fullName: fullName || "",
-        username: newUser.username,
+        username: newUser.username || null,
         email: newUser.email,
         role: newUser.role,
         status: newUser.email_verified ? "active" : "inactive",
@@ -411,7 +411,7 @@ exports.updateUser = async (req, res) => {
       data: {
         id: updatedUser.id,
         fullName: profileResult.rows[0]?.full_name || "",
-        username: updatedUser.username,
+        username: updatedUser.username || null,
         email: updatedUser.email,
         role: updatedUser.role,
         status: updatedUser.email_verified ? "active" : "inactive",
@@ -486,7 +486,7 @@ exports.deleteUser = async (req, res) => {
       data: {
         id: user.id,
         fullName: user.full_name || "",
-        username: user.username,
+        username: user.username || null,
         email: user.email,
         role: user.role,
         status: user.email_verified ? "active" : "inactive",
@@ -573,7 +573,7 @@ exports.bulkDeleteUsers = async (req, res) => {
     const deletedUsers = usersResult.rows.map((user) => ({
       id: user.id,
       fullName: user.full_name || "",
-      username: user.username,
+      username: user.username || null,
       email: user.email,
       role: user.role,
       status: user.email_verified ? "active" : "inactive",
