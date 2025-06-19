@@ -14,6 +14,8 @@ exports.getAllUsers = async (req, res) => {
         u.created_at, 
         u.updated_at, 
         u.email_verified,
+        u.google_id,
+        u.auth_provider,
         p.full_name,
         CASE 
           WHEN u.email_verified = true THEN 'active'
@@ -114,6 +116,8 @@ exports.getAllUsers = async (req, res) => {
         status: user.status,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
+        googleId: user.google_id || null,
+        authProvider: user.auth_provider || "email",
       })),
       error: null,
       metadata: {

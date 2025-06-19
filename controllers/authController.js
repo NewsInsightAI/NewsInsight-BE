@@ -175,8 +175,8 @@ exports.register = async (req, res) => {
 
     
     const newUser = await pool.query(
-      "INSERT INTO users (email, password, role, username) VALUES ($1, $2, $3, $4) RETURNING id, email, role, username, created_at",
-      [email, hashedPassword, role || "user", username]
+      "INSERT INTO users (email, password, role, username, auth_provider) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, role, username, auth_provider, created_at",
+      [email, hashedPassword, role || "user", username, "email"]
     );
     const userId = newUser.rows[0].id;
     
