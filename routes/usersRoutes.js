@@ -9,5 +9,11 @@ router.get("/:id", middlewareAuth, adminOnly, userController.getUserById);
 router.post("/", middlewareAuth, adminOnly, userController.createUser);
 router.put("/:id", middlewareAuth, adminOnly, userController.updateUser);
 router.delete("/:id", middlewareAuth, adminOnly, userController.deleteUser);
+router.post(
+  "/bulk-delete",
+  middlewareAuth,
+  adminOnly,
+  userController.bulkDeleteUsers
+);
 
 module.exports = router;
