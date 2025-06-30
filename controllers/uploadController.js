@@ -278,3 +278,47 @@ exports.deleteCV = async (req, res) => {
     });
   }
 };
+
+exports.uploadImage = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        status: "error",
+        message: "No file uploaded",
+        data: null,
+        error: { code: "NO_FILE" },
+        metadata: null,
+      });
+    }
+
+    const filename = req.file.filename;
+    const imageUrl = `/uploads/images/${filename}`;
+
+    res.status(200).json({
+      status: "success",
+      message: "Image uploaded successfully",
+      data: {
+        url: imageUrl,
+        filename: filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+      },
+      error: null,
+      metadata: {
+        uploadedBy: userId,
+        uploadedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("Image upload error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+      data: null,
+      error: { code: "INTERNAL_ERROR", details: error.message },
+      metadata: null,
+    });
+  }
+};

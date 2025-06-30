@@ -36,7 +36,7 @@ exports.googleAuth = async (req, res) => {
     let user = userRes.rows[0];
     let isNewUser = false;
     if (!user) {
-      isNewUser = true;      // For Google OAuth users, we don't create a username - they can set it later if needed
+      isNewUser = true;
       const dummyPassword = "GOOGLE_OAUTH_" + googleId;
       const newUserRes = await pool.query(
         "INSERT INTO users (email, username, password, role, email_verified, google_id, auth_provider, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *",
@@ -48,7 +48,8 @@ exports.googleAuth = async (req, res) => {
         [user.id, name, picture]
       );
 
-      console.log(`New user registered via Google: ${email}`);    } else if (!user.google_id) {
+      console.log(`New user registered via Google: ${email}`);
+    } else if (!user.google_id) {
       await pool.query(
         "UPDATE users SET google_id = $1, email_verified = true, auth_provider = 'google', updated_at = NOW() WHERE id = $2",
         [googleId, user.id]
@@ -99,7 +100,7 @@ exports.googleAuth = async (req, res) => {
         id: user.id,
         role: user.role,
         email: user.email,
-        username: user.username || null, // Handle null username for Google users
+        username: user.username || null,
       },
       JWT_SECRET,
       { expiresIn: "24h" }
@@ -113,7 +114,7 @@ exports.googleAuth = async (req, res) => {
       data: {
         account: {
           id: user.id,
-          username: user.username || null, // Handle null username for Google users
+          username: user.username || null,
           email: user.email,
           isVerified: true,
           isProfileComplete: isProfileComplete,

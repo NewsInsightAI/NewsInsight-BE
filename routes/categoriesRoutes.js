@@ -4,13 +4,11 @@ const categoriesController = require("../controllers/categoriesController");
 const middlewareAuth = require("../middleware/middlewareAuth");
 const adminOnly = require("../middleware/adminOnly");
 
-// Get all categories (public access for reading)
+
 router.get("/", categoriesController.getAllCategories);
 
-// Get category by ID (public access for reading)
 router.get("/:id", categoriesController.getCategoryById);
 
-// Create new category (admin only)
 router.post(
   "/",
   middlewareAuth,
@@ -18,7 +16,6 @@ router.post(
   categoriesController.createCategory
 );
 
-// Update category (admin only)
 router.put(
   "/:id",
   middlewareAuth,
@@ -26,7 +23,6 @@ router.put(
   categoriesController.updateCategory
 );
 
-// Delete category (admin only)
 router.delete(
   "/:id",
   middlewareAuth,
@@ -34,7 +30,7 @@ router.delete(
   categoriesController.deleteCategory
 );
 
-// Bulk delete categories (admin only)
+
 router.delete(
   "/",
   middlewareAuth,

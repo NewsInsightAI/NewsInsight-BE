@@ -2,9 +2,16 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
+
 const uploadsDir = path.join(__dirname, "../uploads/avatars");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+
+const imagesDir = path.join(__dirname, "../uploads/images");
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
@@ -138,9 +145,74 @@ const handleCVUpload = (req, res, next) => {
   });
 };
 
+const imageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, imagesDir);
+  },
+  filename: function (req, file, cb) {
+    const userId = req.user?.id || "unknown";
+    const timestamp = Date.now();
+    const extension = path.extname(file.originalname);
+    const filename = `image-${userId}-${timestamp}${extension}`;
+    cb(null, filename);
+  },
+});
+
+const imageFileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files are allowed!"), false);
+  }
+};
+
+const imageUpload = multer({
+  storage: imageStorage,
+  fileFilter: imageFileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+});
+
+const uploadImage = imageUpload.single("file");
+
+const handleImageUpload = (req, res, next) => {
+  uploadImage(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+          status: "error",
+          message: "Image file too large. Maximum size is 5MB.",
+          data: null,
+          error: { code: "FILE_TOO_LARGE" },
+          metadata: null,
+        });
+      }
+      return res.status(400).json({
+        status: "error",
+        message: "Image upload error: " + err.message,
+        data: null,
+        error: { code: "UPLOAD_ERROR" },
+        metadata: null,
+      });
+    } else if (err) {
+      return res.status(400).json({
+        status: "error",
+        message: err.message,
+        data: null,
+        error: { code: "INVALID_FILE" },
+        metadata: null,
+      });
+    }
+    next();
+  });
+};
+
 module.exports = {
   handleAvatarUpload,
   handleCVUpload,
+  handleImageUpload,
   uploadsDir,
   cvUploadsDir,
+  imagesDir,
 };

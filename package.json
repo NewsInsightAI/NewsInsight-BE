@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "setup-cities": "node utils/setupDatabase.js",
     "populate-cities": "node utils/populateCities.js",
-    "setup-all-cities": "npm run setup-cities && npm run populate-cities"
+    "setup-all-cities": "npm run setup-cities && npm run populate-cities",
+    "setup-news": "node utils/setupNews.js"
   },
   "keywords": [],
   "author": "",
