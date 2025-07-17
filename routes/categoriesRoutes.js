@@ -7,6 +7,8 @@ const adminOnly = require("../middleware/adminOnly");
 
 router.get("/", categoriesController.getAllCategories);
 
+router.get("/slug/:slug", categoriesController.getCategoryBySlug);
+
 router.get("/:id", categoriesController.getCategoryById);
 
 router.post(

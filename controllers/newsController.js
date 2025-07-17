@@ -757,3 +757,112 @@ exports.bulkDeleteNews = async (req, res) => {
     });
   }
 };
+
+// Get news by category (public endpoint)
+exports.getNewsByCategory = async (req, res) => {
+  try {
+    const { categorySlug } = req.params;
+    const {
+      page = 1,
+      limit = 12,
+      sortBy = "published_at",
+      sortOrder = "DESC",
+    } = req.query;
+
+    let query = `
+      SELECT 
+        n.id,
+        n.title,
+        n.content,
+        n.excerpt,
+        n.slug,
+        n.featured_image,
+        n.status,
+        n.published_at,
+        n.created_at,
+        n.updated_at,
+        n.view_count,
+        n.hashed_id,
+        c.name as category_name,
+        c.slug as category_slug,
+        u.email as created_by_email,
+        p.full_name as created_by_name,
+        COUNT(*) OVER() as total_count
+      FROM news n
+      LEFT JOIN categories c ON n.category_id = c.id
+      LEFT JOIN users u ON n.created_by = u.id
+      LEFT JOIN profile p ON u.id = p.user_id
+      WHERE c.slug = $1 AND n.status = 'published'
+    `;
+
+    const queryParams = [categorySlug];
+
+    const allowedSortFields = [
+      "created_at",
+      "updated_at", 
+      "published_at",
+      "title",
+      "view_count",
+    ];
+    const allowedSortOrders = ["ASC", "DESC"];
+
+    const finalSortBy = allowedSortFields.includes(sortBy)
+      ? sortBy
+      : "published_at";
+    const finalSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase())
+      ? sortOrder.toUpperCase()
+      : "DESC";
+
+    query += ` ORDER BY n.${finalSortBy} ${finalSortOrder}`;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    query += ` LIMIT $2 OFFSET $3`;
+    queryParams.push(limitNum, offset);
+
+    const result = await pool.query(query, queryParams);
+
+    // Add authors and tags for each news item
+    for (let newsItem of result.rows) {
+      const authorsResult = await pool.query(
+        "SELECT author_name, location FROM news_authors WHERE news_id = $1 ORDER BY id",
+        [newsItem.id]
+      );
+      newsItem.authors = authorsResult.rows;
+
+      const tagsResult = await pool.query(
+        "SELECT tag_name FROM news_tags WHERE news_id = $1 ORDER BY id",
+        [newsItem.id]
+      );
+      newsItem.tags = tagsResult.rows.map((row) => row.tag_name);
+    }
+
+    const totalCount =
+      result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+    const totalPages = Math.ceil(totalCount / limitNum);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        news: result.rows,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          totalCount,
+          totalPages,
+          hasNextPage: pageNum < totalPages,
+          hasPreviousPage: pageNum > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching news by category:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};

@@ -23,7 +23,8 @@ exports.getAllCategories = async (req, res) => {
         CASE 
           WHEN is_active = true THEN 'active'
           ELSE 'inactive'
-        END as status
+        END as status,
+        (SELECT COUNT(*) FROM news WHERE category_id = categories.id AND status = 'published') as news_count
       FROM categories
       WHERE 1=1
     `;
@@ -98,6 +99,7 @@ exports.getAllCategories = async (req, res) => {
         slug: category.slug,
         status: category.status,
         isActive: category.is_active,
+        newsCount: parseInt(category.news_count) || 0,
         createdAt: category.created_at,
         updatedAt: category.updated_at,
       })),
@@ -489,6 +491,73 @@ exports.bulkDeleteCategories = async (req, res) => {
       message: "Server error",
       data: null,
       error: { code: "SERVER_ERROR" },
+      metadata: null,
+    });
+  }
+};
+
+exports.getCategoryBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    if (!slug) {
+      return res.status(400).json({
+        status: "error",
+        message: "Slug kategori wajib diisi",
+        data: null,
+        error: { code: "SLUG_REQUIRED" },
+        metadata: null,
+      });
+    }
+
+    const query = `
+      SELECT 
+        id,
+        name,
+        description,
+        slug,
+        is_active,
+        created_at,
+        updated_at,
+        (SELECT COUNT(*) FROM news WHERE category_id = categories.id AND status = 'published') as news_count
+      FROM categories 
+      WHERE slug = $1 AND is_active = true
+    `;
+
+    const result = await pool.query(query, [slug]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Kategori tidak ditemukan",
+        data: null,
+        error: { code: "CATEGORY_NOT_FOUND" },
+        metadata: null,
+      });
+    }
+
+    const category = result.rows[0];
+
+    res.json({
+      status: "success",
+      message: "Kategori berhasil diambil",
+      data: category,
+      error: null,
+      metadata: {
+        slug: slug,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching category by slug:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+      data: null,
+      error: {
+        code: "SERVER_ERROR",
+        details: err.message,
+      },
       metadata: null,
     });
   }
