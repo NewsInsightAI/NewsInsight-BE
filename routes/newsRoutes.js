@@ -3,10 +3,20 @@ const router = express.Router();
 const newsController = require("../controllers/newsController");
 const middlewareAuth = require("../middleware/middlewareAuth");
 const adminOnly = require("../middleware/adminOnly");
+const { trackPageVisit } = require("../middleware/enhancedTrackVisit");
 
-router.get("/public", newsController.getAllNews);
-router.get("/category/:categorySlug", newsController.getNewsByCategory);
-router.get("/:hashedId/:slug", newsController.getNewsByHashedIdAndSlug);
+router.get("/public", trackPageVisit, newsController.getAllNews);
+router.get("/search", trackPageVisit, newsController.searchNews); // Public search endpoint
+router.get(
+  "/category/:categorySlug",
+  trackPageVisit,
+  newsController.getNewsByCategory
+);
+router.get(
+  "/:hashedId/:slug",
+  trackPageVisit,
+  newsController.getNewsByHashedIdAndSlug
+);
 
 router.get("/", middlewareAuth, newsController.getAllNews);
 router.get("/:id", middlewareAuth, newsController.getNewsById);

@@ -15,26 +15,29 @@ const getUserReadingHistory = async (req, res) => {
         rh.read_percentage,
         n.id as news_id,
         n.title,
-        n.image_url,
+        n.featured_image as image_url,
         n.published_at,
         n.status,
         c.name as category_name,
         c.id as category_id,
-        array_agg(
-          json_build_object(
-            'id', a.id,
-            'name', a.name,
-            'avatar_url', a.avatar_url
-          )
+        COALESCE(
+          array_agg(
+            CASE WHEN na.author_name IS NOT NULL THEN
+              json_build_object(
+                'name', na.author_name,
+                'location', na.location
+              )
+            END
+          ) FILTER (WHERE na.author_name IS NOT NULL),
+          ARRAY[]::json[]
         ) as authors
       FROM reading_history rh
       JOIN news n ON rh.news_id = n.id
       JOIN categories c ON n.category_id = c.id
       LEFT JOIN news_authors na ON n.id = na.news_id
-      LEFT JOIN authors a ON na.author_id = a.id
       WHERE rh.user_id = $1 AND n.status = 'published'
       GROUP BY rh.id, rh.news_id, rh.read_at, rh.read_duration, rh.read_percentage, 
-               n.id, n.title, n.image_url, n.published_at, n.status, c.name, c.id
+               n.id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
       ORDER BY rh.news_id, rh.read_at DESC
       LIMIT $2 OFFSET $3
     `;

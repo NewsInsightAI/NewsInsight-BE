@@ -4,11 +4,17 @@ const commentsController = require("../controllers/commentsController");
 const middlewareAuth = require("../middleware/middlewareAuth");
 const adminOnly = require("../middleware/adminOnly");
 
-router.get("/news/:newsId", commentsController.getAllComments);
+// Public routes for frontend comment functionality
+router.get("/news/:newsId", commentsController.getCommentsForNews);
+router.post("/", commentsController.createComment);
+router.post("/:parent_id/reply", commentsController.createReply);
+router.post("/:id/like", commentsController.likeComment);
+router.get("/:id/likes", commentsController.getCommentLikes);
+router.post("/:id/report", commentsController.reportComment);
 
+// Admin routes
 router.get("/", middlewareAuth, commentsController.getAllComments);
 router.get("/:id", middlewareAuth, commentsController.getCommentById);
-router.post("/", commentsController.createComment);
 router.put("/:id", middlewareAuth, commentsController.updateComment);
 router.patch("/:id/approve", middlewareAuth, commentsController.approveComment);
 router.patch("/:id/reject", middlewareAuth, commentsController.rejectComment);

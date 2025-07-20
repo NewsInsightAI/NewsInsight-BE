@@ -1,5 +1,115 @@
 const pool = require("../db");
 
+// Get comments for a specific news article with likes and replies
+exports.getCommentsForNews = async (req, res) => {
+  try {
+    const { newsId } = req.params;
+    const { user_email } = req.query;
+
+    if (!newsId) {
+      return res.status(400).json({
+        success: false,
+        message: "News ID is required",
+      });
+    }
+
+    // Get main comments (parent_id is null)
+    // Show approved comments for everyone + waiting comments for the owner
+    const commentsQuery = `
+      SELECT 
+        c.id,
+        c.news_id,
+        c.reader_name,
+        c.reader_email,
+        c.content,
+        c.status,
+        c.created_at,
+        c.updated_at,
+        c.parent_id,
+        COALESCE(likes.like_count, 0) as likes,
+        COALESCE(dislikes.dislike_count, 0) as dislikes,
+        user_likes.like_type as user_like_type
+      FROM comments c
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as like_count 
+        FROM comment_likes 
+        WHERE like_type = 'like' 
+        GROUP BY comment_id
+      ) likes ON c.id = likes.comment_id
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as dislike_count 
+        FROM comment_likes 
+        WHERE like_type = 'dislike' 
+        GROUP BY comment_id
+      ) dislikes ON c.id = dislikes.comment_id
+      LEFT JOIN comment_likes user_likes ON c.id = user_likes.comment_id AND user_likes.user_email = $2
+      WHERE c.news_id = $1 AND c.parent_id IS NULL 
+        AND (c.status = 'approved' OR (c.status = 'waiting' AND c.reader_email = $2))
+      ORDER BY c.created_at DESC
+    `;
+
+    const mainComments = await pool.query(commentsQuery, [newsId, user_email || null]);
+
+    // Get replies for each main comment
+    const repliesQuery = `
+      SELECT 
+        c.id,
+        c.news_id,
+        c.reader_name,
+        c.reader_email,
+        c.content,
+        c.status,
+        c.created_at,
+        c.updated_at,
+        c.parent_id,
+        COALESCE(likes.like_count, 0) as likes,
+        COALESCE(dislikes.dislike_count, 0) as dislikes,
+        user_likes.like_type as user_like_type
+      FROM comments c
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as like_count 
+        FROM comment_likes 
+        WHERE like_type = 'like' 
+        GROUP BY comment_id
+      ) likes ON c.id = likes.comment_id
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as dislike_count 
+        FROM comment_likes 
+        WHERE like_type = 'dislike' 
+        GROUP BY comment_id
+      ) dislikes ON c.id = dislikes.comment_id
+      LEFT JOIN comment_likes user_likes ON c.id = user_likes.comment_id AND user_likes.user_email = $2
+      WHERE c.news_id = $1 AND c.parent_id = $3 
+        AND (c.status = 'approved' OR (c.status = 'waiting' AND c.reader_email = $2))
+      ORDER BY c.created_at ASC
+    `;
+
+    const commentsWithReplies = [];
+    for (const comment of mainComments.rows) {
+      const replies = await pool.query(repliesQuery, [newsId, user_email || null, comment.id]);
+      commentsWithReplies.push({
+        ...comment,
+        replies: replies.rows
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        comments: commentsWithReplies,
+        total: mainComments.rows.length
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching comments for news:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
 exports.getAllComments = async (req, res) => {
   try {
     const {
@@ -25,10 +135,34 @@ exports.getAllComments = async (req, res) => {
         c.created_at,
         c.updated_at,
         c.published_at,
+        c.parent_id,
         n.title as news_title,
+        COALESCE(likes.like_count, 0) as likes,
+        COALESCE(dislikes.dislike_count, 0) as dislikes,
+        COALESCE(reports.report_count, 0) as reports,
+        parent_comment.content as parent_content,
+        parent_comment.reader_name as parent_reader_name,
         COUNT(*) OVER() as total_count
       FROM comments c
       LEFT JOIN news n ON c.news_id = n.id
+      LEFT JOIN comments parent_comment ON c.parent_id = parent_comment.id
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as like_count 
+        FROM comment_likes 
+        WHERE like_type = 'like' 
+        GROUP BY comment_id
+      ) likes ON c.id = likes.comment_id
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as dislike_count 
+        FROM comment_likes 
+        WHERE like_type = 'dislike' 
+        GROUP BY comment_id
+      ) dislikes ON c.id = dislikes.comment_id
+      LEFT JOIN (
+        SELECT comment_id, COUNT(*) as report_count 
+        FROM comment_reports 
+        GROUP BY comment_id
+      ) reports ON c.id = reports.comment_id
       WHERE 1=1
     `;
 
@@ -522,6 +656,281 @@ exports.rejectComment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error rejecting comment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// Like or dislike a comment
+exports.likeComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_email, like_type } = req.body;
+
+    if (!user_email || !like_type) {
+      return res.status(400).json({
+        success: false,
+        message: "User email and like type are required",
+      });
+    }
+
+    if (!['like', 'dislike'].includes(like_type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Like type must be 'like' or 'dislike'",
+      });
+    }
+
+    // Check if comment exists
+    const commentCheck = await pool.query("SELECT id FROM comments WHERE id = $1", [id]);
+    if (commentCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    // Check if user already liked/disliked this comment
+    const existingLike = await pool.query(
+      "SELECT * FROM comment_likes WHERE comment_id = $1 AND user_email = $2",
+      [id, user_email]
+    );
+
+    let result;
+    if (existingLike.rows.length > 0) {
+      if (existingLike.rows[0].like_type === like_type) {
+        // Same action - remove the like/dislike
+        await pool.query(
+          "DELETE FROM comment_likes WHERE comment_id = $1 AND user_email = $2",
+          [id, user_email]
+        );
+        result = { action: 'removed', like_type: null };
+      } else {
+        // Different action - update the like/dislike
+        result = await pool.query(
+          "UPDATE comment_likes SET like_type = $1, updated_at = CURRENT_TIMESTAMP WHERE comment_id = $2 AND user_email = $3 RETURNING *",
+          [like_type, id, user_email]
+        );
+        result = { action: 'updated', like_type, data: result.rows[0] };
+      }
+    } else {
+      // New like/dislike
+      result = await pool.query(
+        "INSERT INTO comment_likes (comment_id, user_email, like_type) VALUES ($1, $2, $3) RETURNING *",
+        [id, user_email, like_type]
+      );
+      result = { action: 'created', like_type, data: result.rows[0] };
+    }
+
+    // Get updated like counts
+    const likeCounts = await pool.query(
+      `SELECT 
+        COUNT(CASE WHEN like_type = 'like' THEN 1 END) as likes,
+        COUNT(CASE WHEN like_type = 'dislike' THEN 1 END) as dislikes
+       FROM comment_likes WHERE comment_id = $1`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...result,
+        likes: parseInt(likeCounts.rows[0].likes),
+        dislikes: parseInt(likeCounts.rows[0].dislikes)
+      }
+    });
+  } catch (error) {
+    console.error("Error liking comment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// Get comment likes
+exports.getCommentLikes = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT 
+        COUNT(CASE WHEN like_type = 'like' THEN 1 END) as likes,
+        COUNT(CASE WHEN like_type = 'dislike' THEN 1 END) as dislikes
+       FROM comment_likes WHERE comment_id = $1`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        likes: parseInt(result.rows[0].likes),
+        dislikes: parseInt(result.rows[0].dislikes)
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching comment likes:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// Create a reply to a comment
+exports.createReply = async (req, res) => {
+  try {
+    const { parent_id } = req.params;
+    const {
+      news_id,
+      reader_name,
+      reader_email,
+      content,
+      status = "waiting",
+    } = req.body;
+
+    if (!news_id || !reader_name || !content) {
+      return res.status(400).json({
+        success: false,
+        message: "News ID, reader name, and content are required",
+      });
+    }
+
+    // Check if parent comment exists
+    const parentCheck = await pool.query("SELECT id, news_id FROM comments WHERE id = $1", [parent_id]);
+    if (parentCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Parent comment not found",
+      });
+    }
+
+    // Ensure the reply is for the same news article
+    if (parentCheck.rows[0].news_id !== parseInt(news_id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply must be for the same news article as the parent comment",
+      });
+    }
+
+    const moderationResult = {
+      analyzed: false,
+      reason: "Manual review required",
+    };
+    const moderationScore = 0.5;
+
+    const result = await pool.query(
+      `INSERT INTO comments (
+        news_id, reader_name, reader_email, content, status, 
+        moderation_result, moderation_score, parent_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+      RETURNING *`,
+      [
+        news_id,
+        reader_name,
+        reader_email,
+        content,
+        status,
+        JSON.stringify(moderationResult),
+        moderationScore,
+        parent_id,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Reply created successfully",
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Error creating reply:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// Report a comment
+exports.reportComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_email, reason } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment ID is required",
+      });
+    }
+
+    if (!user_email || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "User email and reason are required",
+      });
+    }
+
+    // Check if comment exists
+    const commentCheck = await pool.query(
+      "SELECT id FROM comments WHERE id = $1",
+      [id]
+    );
+
+    if (commentCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    // Check if user has already reported this comment
+    const existingReport = await pool.query(
+      "SELECT id FROM comment_reports WHERE comment_id = $1 AND reporter_email = $2",
+      [id, user_email]
+    );
+
+    if (existingReport.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "You have already reported this comment",
+      });
+    }
+
+    // Create the comment_reports table if it doesn't exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS comment_reports (
+        id SERIAL PRIMARY KEY,
+        comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+        reporter_email VARCHAR(255) NOT NULL,
+        reason TEXT NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Insert the report
+    const result = await pool.query(
+      `INSERT INTO comment_reports (comment_id, reporter_email, reason) 
+       VALUES ($1, $2, $3) 
+       RETURNING *`,
+      [id, user_email, reason]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Comment reported successfully",
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Error reporting comment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",

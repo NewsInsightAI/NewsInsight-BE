@@ -13,25 +13,28 @@ const getUserBookmarks = async (req, res) => {
         b.created_at as bookmarked_at,
         n.id as news_id,
         n.title,
-        n.image_url,
+        n.featured_image as image_url,
         n.published_at,
         n.status,
         c.name as category_name,
         c.id as category_id,
-        array_agg(
-          json_build_object(
-            'id', a.id,
-            'name', a.name,
-            'avatar_url', a.avatar_url
-          )
+        COALESCE(
+          array_agg(
+            CASE WHEN na.author_name IS NOT NULL THEN
+              json_build_object(
+                'name', na.author_name,
+                'location', na.location
+              )
+            END
+          ) FILTER (WHERE na.author_name IS NOT NULL),
+          ARRAY[]::json[]
         ) as authors
       FROM bookmarks b
       JOIN news n ON b.news_id = n.id
       JOIN categories c ON n.category_id = c.id
       LEFT JOIN news_authors na ON n.id = na.news_id
-      LEFT JOIN authors a ON na.author_id = a.id
       WHERE b.user_id = $1 AND n.status = 'published'
-      GROUP BY b.id, b.created_at, n.id, n.title, n.image_url, n.published_at, n.status, c.name, c.id
+      GROUP BY b.id, b.created_at, n.id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
       ORDER BY b.created_at DESC
       LIMIT $2 OFFSET $3
     `;

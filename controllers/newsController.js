@@ -866,3 +866,103 @@ exports.getNewsByCategory = async (req, res) => {
     });
   }
 };
+// Search news (public endpoint, no authentication required)
+exports.searchNews = async (req, res) => {
+  try {
+    const {
+      q: search,
+      page = 1,
+      limit = 10,
+      sortBy = "published_at",
+      sortOrder = "DESC",
+    } = req.query;
+
+    if (!search || search.trim() === "") {
+      return res.status(400).json({
+        status: "error",
+        message: "Search query is required",
+        data: null,
+      });
+    }
+
+    let query = `
+      SELECT 
+        n.id,
+        n.title,
+        n.excerpt,
+        n.slug,
+        n.featured_image,
+        n.published_at,
+        n.created_at,
+        n.view_count,
+        n.hashed_id,
+        c.name as category_name,
+        c.slug as category_slug,
+        COALESCE(
+          JSON_AGG(
+            CASE 
+              WHEN na.id IS NOT NULL 
+              THEN JSON_BUILD_OBJECT('author_name', na.author_name, 'location', na.location)
+              ELSE NULL 
+            END
+          ) FILTER (WHERE na.id IS NOT NULL), 
+          '[]'::json
+        ) as authors,
+        COUNT(*) OVER() as total_count
+      FROM news n
+      LEFT JOIN categories c ON n.category_id = c.id
+      LEFT JOIN news_authors na ON n.id = na.news_id
+      WHERE n.status = 'published'
+        AND (
+          LOWER(n.title) LIKE LOWER($1) OR 
+          LOWER(n.content) LIKE LOWER($1) OR
+          LOWER(n.excerpt) LIKE LOWER($1)
+        )
+      GROUP BY n.id, c.name, c.slug
+      ORDER BY ${sortBy} ${sortOrder}
+      LIMIT $2 OFFSET $3
+    `;
+
+    const offset = (page - 1) * limit;
+    const result = await pool.query(query, [`%${search}%`, limit, offset]);
+
+    const totalCount = result.rows.length > 0 ? result.rows[0].total_count : 0;
+    const totalPages = Math.ceil(totalCount / limit);
+
+    res.json({
+      status: "success",
+      message: "Search results retrieved successfully",
+      data: {
+        news: result.rows.map(row => ({
+          id: row.id,
+          hashed_id: row.hashed_id,
+          title: row.title,
+          excerpt: row.excerpt,
+          slug: row.slug,
+          featured_image: row.featured_image,
+          published_at: row.published_at,
+          created_at: row.created_at,
+          view_count: row.view_count,
+          category_name: row.category_name,
+          category_slug: row.category_slug,
+          authors: row.authors || []
+        })),
+        pagination: {
+          current_page: parseInt(page),
+          total_pages: totalPages,
+          total_count: parseInt(totalCount),
+          per_page: parseInt(limit),
+          has_next: page < totalPages,
+          has_prev: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error searching news:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
