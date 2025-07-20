@@ -16,6 +16,13 @@ const searchRoutes = require("./searchRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
 const analyticsRoutes = require("./analyticsRoutes");
 const newsInteractionsRoutes = require("./newsInteractionsRoutes");
+const commentAnalysisRoutes = require("./commentAnalysisRoutes");
+
+// Debug middleware untuk melihat request yang masuk
+router.use((req, res, next) => {
+  console.log("[apiV1] Request:", req.method, req.path);
+  next();
+});
 
 router.use("/users", userRoutes);
 router.use("/auth", authRoutes);
@@ -24,13 +31,14 @@ router.use("/upload", uploadRoutes);
 router.use("/cities", citiesRoutes);
 router.use("/mfa", mfaRoutes);
 router.use("/categories", categoriesRoutes);
-router.use("/", newsInteractionsRoutes); // Base path untuk news interactions - HARUS SEBELUM newsRoutes
-router.use("/news", newsRoutes);
+router.use("/news", newsRoutes); // newsRoutes untuk /news/:id, /news/:id/summary, dll
 router.use("/comments", commentsRoutes);
+router.use("/", newsInteractionsRoutes); // Base path untuk news interactions - SETELAH semua route spesifik
 router.use("/bookmarks", bookmarksRoutes);
 router.use("/reading-history", readingHistoryRoutes);
 router.use("/search", searchRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/comment-analysis", commentAnalysisRoutes);
 
 module.exports = router;

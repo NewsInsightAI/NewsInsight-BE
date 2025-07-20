@@ -89,7 +89,7 @@ const newsItem = {
 // New sharing with tracking
 const handleShare = async (platform) => {
   try {
-    await fetch('/api/v1/news/share', {
+    await fetch('/api/news/share', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -109,7 +109,7 @@ const handleShare = async (platform) => {
 // New reporting functionality
 const handleReport = async (reason, description) => {
   try {
-    await fetch('/api/v1/news/report', {
+    await fetch('/api/news/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -148,7 +148,7 @@ Create admin dashboard for:
 
 ### 1. Share Tracking Endpoint
 ```javascript
-// POST /api/v1/news/share
+// POST /api/news/share
 {
   "news_id": 123,
   "platform": "facebook"
@@ -157,7 +157,7 @@ Create admin dashboard for:
 
 ### 2. Report Content Endpoint
 ```javascript
-// POST /api/v1/news/report
+// POST /api/news/report
 {
   "news_id": 123,
   "reason": "inappropriate_content",
@@ -167,7 +167,7 @@ Create admin dashboard for:
 
 ### 3. Enhanced News API
 ```javascript
-// GET /api/v1/news/:id - Include metrics
+// GET /api/news/:id - Include metrics
 {
   "id": 123,
   "title": "News Title",

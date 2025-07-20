@@ -3,6 +3,12 @@ const router = express.Router();
 const newsInteractionsController = require("../controllers/newsInteractionsController");
 const authenticateToken = require("../middleware/middlewareAuth");
 
+// Debug middleware untuk melihat request yang masuk
+router.use((req, res, next) => {
+  console.log("[newsInteractionsRoutes] Request:", req.method, req.path);
+  next();
+});
+
 // Save/Unsave News Routes
 router.post(
   "/news/:newsId/save",
@@ -29,12 +35,5 @@ router.post(
 
 // Share News Routes (tracking)
 router.post("/news/:newsId/share", newsInteractionsController.trackNewsShare); // No auth required for guest tracking
-
-// Summary Routes
-router.post(
-  "/news/:newsId/summary",
-  newsInteractionsController.generateSummary
-); // No auth required
-router.get("/news/:newsId/summary", newsInteractionsController.getSummary); // No auth required
 
 module.exports = router;

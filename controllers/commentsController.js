@@ -14,11 +14,12 @@ exports.getCommentsForNews = async (req, res) => {
     }
 
     // Get main comments (parent_id is null)
-    // Show approved comments for everyone + waiting comments for the owner
+    // Show published comments for everyone + waiting comments for the owner
     const commentsQuery = `
       SELECT 
         c.id,
         c.news_id,
+        c.user_id,
         c.reader_name,
         c.reader_email,
         c.content,
@@ -26,6 +27,8 @@ exports.getCommentsForNews = async (req, res) => {
         c.created_at,
         c.updated_at,
         c.parent_id,
+        c.moderation_result,
+        c.moderation_score,
         COALESCE(likes.like_count, 0) as likes,
         COALESCE(dislikes.dislike_count, 0) as dislikes,
         user_likes.like_type as user_like_type
@@ -44,17 +47,21 @@ exports.getCommentsForNews = async (req, res) => {
       ) dislikes ON c.id = dislikes.comment_id
       LEFT JOIN comment_likes user_likes ON c.id = user_likes.comment_id AND user_likes.user_email = $2
       WHERE c.news_id = $1 AND c.parent_id IS NULL 
-        AND (c.status = 'approved' OR (c.status = 'waiting' AND c.reader_email = $2))
+        AND (c.status = 'published' OR (c.status = 'waiting' AND c.reader_email = $2))
       ORDER BY c.created_at DESC
     `;
 
-    const mainComments = await pool.query(commentsQuery, [newsId, user_email || null]);
+    const mainComments = await pool.query(commentsQuery, [
+      newsId,
+      user_email || null,
+    ]);
 
     // Get replies for each main comment
     const repliesQuery = `
       SELECT 
         c.id,
         c.news_id,
+        c.user_id,
         c.reader_name,
         c.reader_email,
         c.content,
@@ -62,6 +69,8 @@ exports.getCommentsForNews = async (req, res) => {
         c.created_at,
         c.updated_at,
         c.parent_id,
+        c.moderation_result,
+        c.moderation_score,
         COALESCE(likes.like_count, 0) as likes,
         COALESCE(dislikes.dislike_count, 0) as dislikes,
         user_likes.like_type as user_like_type
@@ -80,16 +89,20 @@ exports.getCommentsForNews = async (req, res) => {
       ) dislikes ON c.id = dislikes.comment_id
       LEFT JOIN comment_likes user_likes ON c.id = user_likes.comment_id AND user_likes.user_email = $2
       WHERE c.news_id = $1 AND c.parent_id = $3 
-        AND (c.status = 'approved' OR (c.status = 'waiting' AND c.reader_email = $2))
+        AND (c.status = 'published' OR (c.status = 'waiting' AND c.reader_email = $2))
       ORDER BY c.created_at ASC
     `;
 
     const commentsWithReplies = [];
     for (const comment of mainComments.rows) {
-      const replies = await pool.query(repliesQuery, [newsId, user_email || null, comment.id]);
+      const replies = await pool.query(repliesQuery, [
+        newsId,
+        user_email || null,
+        comment.id,
+      ]);
       commentsWithReplies.push({
         ...comment,
-        replies: replies.rows
+        replies: replies.rows,
       });
     }
 
@@ -97,8 +110,8 @@ exports.getCommentsForNews = async (req, res) => {
       success: true,
       data: {
         comments: commentsWithReplies,
-        total: mainComments.rows.length
-      }
+        total: mainComments.rows.length,
+      },
     });
   } catch (error) {
     console.error("Error fetching comments for news:", error);
@@ -317,24 +330,122 @@ exports.createComment = async (req, res) => {
       });
     }
 
-    const moderationResult = {
+    // Get user_id if reader_email exists in users table
+    let user_id = null;
+    if (reader_email) {
+      const userCheck = await pool.query(
+        "SELECT id FROM users WHERE email = $1",
+        [reader_email]
+      );
+      if (userCheck.rows.length > 0) {
+        user_id = userCheck.rows[0].id;
+      }
+    }
+
+    // Analyze comment using Perspective API
+    let finalStatus = status;
+    let moderationResult = {
       analyzed: false,
       reason: "Manual review required",
     };
-    const moderationScore = 0.5;
+    let moderationScore = 0.5;
+
+    try {
+      const { google } = require("googleapis");
+      const API_KEY = process.env.PERSPECTIVE_API_KEY;
+      const DISCOVERY_URL =
+        "https://commentanalyzer.googleapis.com/$discovery/rest?version=v1alpha1";
+      const TOXICITY_THRESHOLD = 0.7;
+
+      if (API_KEY) {
+        const client = await google.discoverAPI(DISCOVERY_URL);
+
+        const analyzeRequest = {
+          comment: { text: content.trim() },
+          requestedAttributes: {
+            TOXICITY: {},
+            SEVERE_TOXICITY: {},
+            IDENTITY_ATTACK: {},
+            INSULT: {},
+            PROFANITY: {},
+            THREAT: {},
+          },
+          languages: ["id", "en"],
+        };
+
+        const response = await new Promise((resolve, reject) => {
+          client.comments.analyze(
+            { key: API_KEY, resource: analyzeRequest },
+            (err, response) => {
+              if (err) reject(err);
+              else resolve(response);
+            }
+          );
+        });
+
+        const attributeScores = response.data.attributeScores;
+        const scores = {};
+        let maxScore = 0;
+        let isProblematic = false;
+
+        for (const [attribute, data] of Object.entries(attributeScores)) {
+          const score = data.summaryScore.value;
+          scores[attribute] = score;
+          if (score > maxScore) maxScore = score;
+          if (score > TOXICITY_THRESHOLD) isProblematic = true;
+        }
+
+        // Determine status based on analysis
+        if (isProblematic) {
+          finalStatus = "rejected";
+          moderationResult = {
+            analyzed: true,
+            reason: "Content flagged for toxicity",
+            scores: scores,
+          };
+          moderationScore = maxScore;
+        } else if (maxScore > 0.5) {
+          finalStatus = "waiting";
+          moderationResult = {
+            analyzed: true,
+            reason: "Requires manual review",
+            scores: scores,
+          };
+          moderationScore = maxScore;
+        } else {
+          finalStatus = "published";
+          moderationResult = {
+            analyzed: true,
+            reason: "Content approved",
+            scores: scores,
+          };
+          moderationScore = maxScore;
+        }
+      }
+    } catch (error) {
+      console.error("Error analyzing comment:", error);
+      // If analysis fails, use manual review
+      finalStatus = "waiting";
+      moderationResult = {
+        analyzed: false,
+        reason: "Analysis failed, manual review required",
+        error: error.message,
+      };
+    }
 
     const result = await pool.query(
       `INSERT INTO comments (
-        news_id, reader_name, reader_email, content, status, 
+        news_id, user_id, reader_name, reader_email, content, status, 
         moderation_result, moderation_score
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7) 
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
       RETURNING *`,
       [
         news_id,
+        user_id,
         reader_name,
         reader_email,
         content,
-        status,
+        finalStatus,
         moderationResult,
         moderationScore,
       ]
@@ -470,6 +581,64 @@ exports.updateComment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating comment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// Delete comment by user (only their own comments)
+exports.deleteUserComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_email } = req.body;
+
+    if (!user_email) {
+      return res.status(400).json({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    // First check if the comment exists and belongs to the user
+    const checkResult = await pool.query(
+      "SELECT id, reader_email FROM comments WHERE id = $1",
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    const comment = checkResult.rows[0];
+    if (comment.reader_email !== user_email) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only delete your own comments",
+      });
+    }
+
+    // Delete the comment and its replies
+    const deleteResult = await pool.query(
+      "DELETE FROM comments WHERE id = $1 OR parent_id = $1 RETURNING *",
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: "Comment deleted successfully",
+      data: {
+        deleted_count: deleteResult.rows.length,
+        deleted_comments: deleteResult.rows,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting user comment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -677,7 +846,7 @@ exports.likeComment = async (req, res) => {
       });
     }
 
-    if (!['like', 'dislike'].includes(like_type)) {
+    if (!["like", "dislike"].includes(like_type)) {
       return res.status(400).json({
         success: false,
         message: "Like type must be 'like' or 'dislike'",
@@ -685,7 +854,10 @@ exports.likeComment = async (req, res) => {
     }
 
     // Check if comment exists
-    const commentCheck = await pool.query("SELECT id FROM comments WHERE id = $1", [id]);
+    const commentCheck = await pool.query(
+      "SELECT id FROM comments WHERE id = $1",
+      [id]
+    );
     if (commentCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -707,14 +879,14 @@ exports.likeComment = async (req, res) => {
           "DELETE FROM comment_likes WHERE comment_id = $1 AND user_email = $2",
           [id, user_email]
         );
-        result = { action: 'removed', like_type: null };
+        result = { action: "removed", like_type: null };
       } else {
         // Different action - update the like/dislike
         result = await pool.query(
           "UPDATE comment_likes SET like_type = $1, updated_at = CURRENT_TIMESTAMP WHERE comment_id = $2 AND user_email = $3 RETURNING *",
           [like_type, id, user_email]
         );
-        result = { action: 'updated', like_type, data: result.rows[0] };
+        result = { action: "updated", like_type, data: result.rows[0] };
       }
     } else {
       // New like/dislike
@@ -722,7 +894,7 @@ exports.likeComment = async (req, res) => {
         "INSERT INTO comment_likes (comment_id, user_email, like_type) VALUES ($1, $2, $3) RETURNING *",
         [id, user_email, like_type]
       );
-      result = { action: 'created', like_type, data: result.rows[0] };
+      result = { action: "created", like_type, data: result.rows[0] };
     }
 
     // Get updated like counts
@@ -739,8 +911,8 @@ exports.likeComment = async (req, res) => {
       data: {
         ...result,
         likes: parseInt(likeCounts.rows[0].likes),
-        dislikes: parseInt(likeCounts.rows[0].dislikes)
-      }
+        dislikes: parseInt(likeCounts.rows[0].dislikes),
+      },
     });
   } catch (error) {
     console.error("Error liking comment:", error);
@@ -769,8 +941,8 @@ exports.getCommentLikes = async (req, res) => {
       success: true,
       data: {
         likes: parseInt(result.rows[0].likes),
-        dislikes: parseInt(result.rows[0].dislikes)
-      }
+        dislikes: parseInt(result.rows[0].dislikes),
+      },
     });
   } catch (error) {
     console.error("Error fetching comment likes:", error);
@@ -802,7 +974,10 @@ exports.createReply = async (req, res) => {
     }
 
     // Check if parent comment exists
-    const parentCheck = await pool.query("SELECT id, news_id FROM comments WHERE id = $1", [parent_id]);
+    const parentCheck = await pool.query(
+      "SELECT id, news_id FROM comments WHERE id = $1",
+      [parent_id]
+    );
     if (parentCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -814,29 +989,128 @@ exports.createReply = async (req, res) => {
     if (parentCheck.rows[0].news_id !== parseInt(news_id)) {
       return res.status(400).json({
         success: false,
-        message: "Reply must be for the same news article as the parent comment",
+        message:
+          "Reply must be for the same news article as the parent comment",
       });
     }
 
-    const moderationResult = {
+    // Get user_id if reader_email exists in users table
+    let user_id = null;
+    if (reader_email) {
+      const userCheck = await pool.query(
+        "SELECT id FROM users WHERE email = $1",
+        [reader_email]
+      );
+      if (userCheck.rows.length > 0) {
+        user_id = userCheck.rows[0].id;
+      }
+    }
+
+    // Analyze reply using Perspective API
+    let finalStatus = status;
+    let moderationResult = {
       analyzed: false,
       reason: "Manual review required",
     };
-    const moderationScore = 0.5;
+    let moderationScore = 0.5;
+
+    try {
+      const { google } = require("googleapis");
+      const API_KEY = process.env.PERSPECTIVE_API_KEY;
+      const DISCOVERY_URL =
+        "https://commentanalyzer.googleapis.com/$discovery/rest?version=v1alpha1";
+      const TOXICITY_THRESHOLD = 0.7;
+
+      if (API_KEY) {
+        const client = await google.discoverAPI(DISCOVERY_URL);
+
+        const analyzeRequest = {
+          comment: { text: content.trim() },
+          requestedAttributes: {
+            TOXICITY: {},
+            SEVERE_TOXICITY: {},
+            IDENTITY_ATTACK: {},
+            INSULT: {},
+            PROFANITY: {},
+            THREAT: {},
+          },
+          languages: ["id", "en"],
+        };
+
+        const response = await new Promise((resolve, reject) => {
+          client.comments.analyze(
+            { key: API_KEY, resource: analyzeRequest },
+            (err, response) => {
+              if (err) reject(err);
+              else resolve(response);
+            }
+          );
+        });
+
+        const attributeScores = response.data.attributeScores;
+        const scores = {};
+        let maxScore = 0;
+        let isProblematic = false;
+
+        for (const [attribute, data] of Object.entries(attributeScores)) {
+          const score = data.summaryScore.value;
+          scores[attribute] = score;
+          if (score > maxScore) maxScore = score;
+          if (score > TOXICITY_THRESHOLD) isProblematic = true;
+        }
+
+        // Determine status based on analysis
+        if (isProblematic) {
+          finalStatus = "rejected";
+          moderationResult = {
+            analyzed: true,
+            reason: "Content flagged for toxicity",
+            scores: scores,
+          };
+          moderationScore = maxScore;
+        } else if (maxScore > 0.5) {
+          finalStatus = "waiting";
+          moderationResult = {
+            analyzed: true,
+            reason: "Requires manual review",
+            scores: scores,
+          };
+          moderationScore = maxScore;
+        } else {
+          finalStatus = "published";
+          moderationResult = {
+            analyzed: true,
+            reason: "Content approved",
+            scores: scores,
+          };
+          moderationScore = maxScore;
+        }
+      }
+    } catch (error) {
+      console.error("Error analyzing reply:", error);
+      // If analysis fails, use manual review
+      finalStatus = "waiting";
+      moderationResult = {
+        analyzed: false,
+        reason: "Analysis failed, manual review required",
+        error: error.message,
+      };
+    }
 
     const result = await pool.query(
       `INSERT INTO comments (
-        news_id, reader_name, reader_email, content, status, 
+        news_id, user_id, reader_name, reader_email, content, status, 
         moderation_result, moderation_score, parent_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
       RETURNING *`,
       [
         news_id,
+        user_id,
         reader_name,
         reader_email,
         content,
-        status,
-        JSON.stringify(moderationResult),
+        finalStatus,
+        moderationResult,
         moderationScore,
         parent_id,
       ]

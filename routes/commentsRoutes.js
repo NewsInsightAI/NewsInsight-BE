@@ -11,6 +11,7 @@ router.post("/:parent_id/reply", commentsController.createReply);
 router.post("/:id/like", commentsController.likeComment);
 router.get("/:id/likes", commentsController.getCommentLikes);
 router.post("/:id/report", commentsController.reportComment);
+router.delete("/:id/delete", commentsController.deleteUserComment); // New route for users to delete their own comments
 
 // Admin routes
 router.get("/", middlewareAuth, commentsController.getAllComments);

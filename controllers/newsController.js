@@ -170,7 +170,8 @@ exports.getAllNews = async (req, res) => {
 
 exports.getNewsById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { newsId } = req.params;
+    console.log("[newsController.getNewsById] Called with ID:", newsId);
     const userId = req.user.id;
 
     const query = `
@@ -187,7 +188,7 @@ exports.getNewsById = async (req, res) => {
       WHERE n.id = $1
     `;
 
-    const result = await pool.query(query, [id]);
+    const result = await pool.query(query, [newsId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({

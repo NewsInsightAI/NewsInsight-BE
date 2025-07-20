@@ -1,6 +1,6 @@
 const db = require("../db");
 
-// Save/Unsave News (Bookmark)
+// Save/Unsave News (Bookmark) - Using bookmarks table for consistency
 exports.toggleSaveNews = async (req, res) => {
   try {
     const { newsId } = req.params;
@@ -8,14 +8,14 @@ exports.toggleSaveNews = async (req, res) => {
 
     // Check if already saved
     const existingResult = await db.query(
-      "SELECT id FROM saved_news WHERE user_id = $1 AND news_id = $2",
+      "SELECT id FROM bookmarks WHERE user_id = $1 AND news_id = $2",
       [userId, newsId]
     );
 
     if (existingResult.rows.length > 0) {
       // Remove from saved
       await db.query(
-        "DELETE FROM saved_news WHERE user_id = $1 AND news_id = $2",
+        "DELETE FROM bookmarks WHERE user_id = $1 AND news_id = $2",
         [userId, newsId]
       );
 
@@ -27,7 +27,7 @@ exports.toggleSaveNews = async (req, res) => {
     } else {
       // Add to saved
       await db.query(
-        "INSERT INTO saved_news (user_id, news_id) VALUES ($1, $2)",
+        "INSERT INTO bookmarks (user_id, news_id) VALUES ($1, $2)",
         [userId, newsId]
       );
 
@@ -47,7 +47,7 @@ exports.toggleSaveNews = async (req, res) => {
   }
 };
 
-// Check if news is saved by user
+// Check if news is saved by user - Using bookmarks table for consistency
 exports.checkSavedStatus = async (req, res) => {
   console.log("=== checkSavedStatus called ===");
   console.log("Params:", req.params);
@@ -60,7 +60,7 @@ exports.checkSavedStatus = async (req, res) => {
     console.log("Checking saved status for:", { userId, newsId });
 
     const result = await db.query(
-      "SELECT id FROM saved_news WHERE user_id = $1 AND news_id = $2",
+      "SELECT id FROM bookmarks WHERE user_id = $1 AND news_id = $2",
       [userId, newsId]
     );
 
@@ -80,81 +80,32 @@ exports.checkSavedStatus = async (req, res) => {
   }
 };
 
-// Get user's saved news
+// Get user's saved news - Using bookmarks table for consistency
 exports.getSavedNews = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 12 } = req.query;
+    const { page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
-    console.log("=== getSavedNews called ===");
-    console.log("User ID:", userId);
-    console.log("Page:", page, "Limit:", limit);
-
-    const savedNewsQuery = `
-      SELECT 
-        sn.id,
-        sn.created_at as bookmarked_at,
-        n.id as news_id,
-        n.title,
-        n.featured_image as image_url,
-        n.published_at,
-        n.status,
-        c.name as category_name,
-        c.id as category_id,
-        COALESCE(
-          array_agg(
-            CASE WHEN na.author_name IS NOT NULL THEN
-              json_build_object(
-                'name', na.author_name,
-                'location', na.location
-              )
-            END
-          ) FILTER (WHERE na.author_name IS NOT NULL),
-          ARRAY[]::json[]
-        ) as authors
-      FROM saved_news sn
-      JOIN news n ON sn.news_id = n.id
-      JOIN categories c ON n.category_id = c.id
-      LEFT JOIN news_authors na ON n.id = na.news_id
-      WHERE sn.user_id = $1 AND n.status = 'published'
-      GROUP BY sn.id, sn.created_at, n.id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
-      ORDER BY sn.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-
-    const countQuery = `
-      SELECT COUNT(DISTINCT sn.id) as total
-      FROM saved_news sn
-      JOIN news n ON sn.news_id = n.id
-      WHERE sn.user_id = $1 AND n.status = 'published'
-    `;
-
-    const [savedNewsResult, countResult] = await Promise.all([
-      db.query(savedNewsQuery, [userId, limit, offset]),
-      db.query(countQuery, [userId]),
-    ]);
-
-    const total = parseInt(countResult.rows[0].total);
-    const totalPages = Math.ceil(total / limit);
-
-    console.log("=== getSavedNews Debug ===");
-    console.log(
-      "Raw saved news data:",
-      JSON.stringify(savedNewsResult.rows, null, 2)
+    const result = await db.query(
+      `SELECT 
+        b.news_id,
+        b.created_at as saved_at,
+        COUNT(*) OVER() as total_count
+       FROM bookmarks b
+       WHERE b.user_id = $1
+       ORDER BY b.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
     );
-    console.log("Total items:", total);
 
     res.json({
       success: true,
-      data: savedNewsResult.rows,
+      data: result.rows,
       pagination: {
-        current_page: parseInt(page),
-        total_pages: totalPages,
-        total_items: total,
-        items_per_page: parseInt(limit),
-        has_next: parseInt(page) < totalPages,
-        has_prev: parseInt(page) > 1,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: result.rows[0]?.total_count || 0,
       },
     });
   } catch (error) {
@@ -240,111 +191,6 @@ exports.trackNewsShare = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Terjadi kesalahan saat mencatat share",
-      error: error.message,
-    });
-  }
-};
-
-// Generate News Summary
-exports.generateSummary = async (req, res) => {
-  try {
-    const { newsId } = req.params;
-
-    // Check if summary already exists
-    const existingSummary = await db.query(
-      "SELECT * FROM news_summaries WHERE news_id = $1",
-      [newsId]
-    );
-
-    if (existingSummary.rows.length > 0) {
-      return res.json({
-        success: true,
-        data: {
-          id: existingSummary.rows[0].id,
-          newsId: existingSummary.rows[0].news_id,
-          summaryText: existingSummary.rows[0].summary_text,
-          keyPoints: existingSummary.rows[0].key_points,
-          createdAt: existingSummary.rows[0].created_at,
-        },
-      });
-    }
-
-    // For demo purposes, generate a mock summary
-    // In real implementation, this would use AI/ML service
-    const mockSummary = `Ringkasan berita ini memberikan poin-poin utama dari artikel yang telah disajikan. 
-    
-Berita ini membahas topik penting yang relevan dengan masyarakat saat ini. Informasi yang disajikan telah diverifikasi dan bersumber dari narasumber yang kredibel.
-
-Dampak dari peristiwa ini diperkirakan akan mempengaruhi berbagai aspek kehidupan masyarakat, sehingga perlu mendapat perhatian khusus dari berbagai pihak terkait.`;
-
-    const keyPoints = [
-      "Topik utama yang dibahas dalam berita",
-      "Narasumber kredibel telah dikonfirmasi",
-      "Dampak signifikan terhadap masyarakat",
-      "Memerlukan perhatian dari pihak terkait",
-      "Informasi telah diverifikasi",
-    ];
-
-    // Insert summary
-    const result = await db.query(
-      `INSERT INTO news_summaries (news_id, summary_text, key_points) 
-       VALUES ($1, $2, $3) 
-       RETURNING *`,
-      [newsId, mockSummary, JSON.stringify(keyPoints)]
-    );
-
-    res.json({
-      success: true,
-      data: {
-        id: result.rows[0].id,
-        newsId: result.rows[0].news_id,
-        summaryText: result.rows[0].summary_text,
-        keyPoints: result.rows[0].key_points,
-        createdAt: result.rows[0].created_at,
-      },
-    });
-  } catch (error) {
-    console.error("Error generating summary:", error);
-    res.status(500).json({
-      success: false,
-      message: "Terjadi kesalahan saat membuat ringkasan",
-      error: error.message,
-    });
-  }
-};
-
-// Get News Summary
-exports.getSummary = async (req, res) => {
-  try {
-    const { newsId } = req.params;
-
-    const result = await db.query(
-      "SELECT * FROM news_summaries WHERE news_id = $1",
-      [newsId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Ringkasan tidak ditemukan",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        id: result.rows[0].id,
-        newsId: result.rows[0].news_id,
-        summaryText: result.rows[0].summary_text,
-        keyPoints: result.rows[0].key_points,
-        createdAt: result.rows[0].created_at,
-      },
-    });
-  } catch (error) {
-    console.error("Error getting summary:", error);
-    res.status(500).json({
-      success: false,
-      message: "Terjadi kesalahan saat mengambil ringkasan",
       error: error.message,
     });
   }

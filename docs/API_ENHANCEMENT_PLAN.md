@@ -7,7 +7,7 @@ This document outlines the required API enhancements to support the new database
 
 ### 1. News Sharing API
 
-#### `POST /api/v1/news/:id/share`
+#### `POST /api/news/:id/share`
 **Purpose**: Track news sharing across platforms
 
 **Request Body**:
@@ -61,7 +61,7 @@ const shareNews = async (req, res) => {
 
 ### 2. Content Reporting API
 
-#### `POST /api/v1/news/:id/report`
+#### `POST /api/news/:id/report`
 **Purpose**: Allow users to report inappropriate content
 
 **Request Body**:
@@ -121,7 +121,7 @@ const reportNews = async (req, res) => {
 
 ### 3. Enhanced News Metrics API
 
-#### `GET /api/v1/news/:id/metrics`
+#### `GET /api/news/:id/metrics`
 **Purpose**: Get detailed metrics for a news article
 
 **Response**:
@@ -145,7 +145,7 @@ const reportNews = async (req, res) => {
 
 ### 4. Tag Management API
 
-#### `GET /api/v1/tags`
+#### `GET /api/tags`
 **Purpose**: Get all available tags
 
 **Response**:
@@ -162,7 +162,7 @@ const reportNews = async (req, res) => {
 }
 ```
 
-#### `GET /api/v1/news/by-tag/:slug`
+#### `GET /api/news/by-tag/:slug`
 **Purpose**: Get news by tag
 
 **Query Parameters**:
@@ -173,7 +173,7 @@ const reportNews = async (req, res) => {
 
 ### 1. Enhanced News List API
 
-#### `GET /api/v1/news`
+#### `GET /api/news`
 **Enhanced Response** (include metrics):
 ```json
 {
@@ -205,7 +205,7 @@ const reportNews = async (req, res) => {
 
 ### 2. Enhanced News Detail API
 
-#### `GET /api/v1/news/:id`
+#### `GET /api/news/:id`
 **Enhanced Response**:
 ```json
 {
@@ -248,14 +248,14 @@ const reportNews = async (req, res) => {
 
 ### 1. Reports Management
 
-#### `GET /api/v1/admin/reports`
+#### `GET /api/admin/reports`
 **Purpose**: Get all content reports for moderation
 
 **Query Parameters**:
 - `status`: `pending|reviewed|dismissed|action_taken`
 - `page`, `limit`: Pagination
 
-#### `PUT /api/v1/admin/reports/:id`
+#### `PUT /api/admin/reports/:id`
 **Purpose**: Update report status
 
 **Request Body**:
@@ -268,7 +268,7 @@ const reportNews = async (req, res) => {
 
 ### 2. Analytics Dashboard
 
-#### `GET /api/v1/admin/analytics/overview`
+#### `GET /api/admin/analytics/overview`
 **Purpose**: Get system-wide analytics
 
 **Response**:
