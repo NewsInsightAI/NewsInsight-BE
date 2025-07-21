@@ -3,12 +3,15 @@ const router = express.Router();
 const newsController = require("../controllers/newsController");
 const newsSummaryController = require("../controllers/newsSummaryController");
 const newsInteractionsController = require("../controllers/newsInteractionsController");
+const readingHistoryController = require("../controllers/readingHistoryController");
 const middlewareAuth = require("../middleware/middlewareAuth");
 const adminOnly = require("../middleware/adminOnly");
 const { trackPageVisit } = require("../middleware/enhancedTrackVisit");
 
+// Public routes - no authentication required
 router.get("/public", trackPageVisit, newsController.getAllNews);
 router.get("/search", trackPageVisit, newsController.searchNews);
+router.post("/track-view", readingHistoryController.trackNewsView);
 
 // Summary routes - PALING ATAS untuk hindari konflik
 router.get("/summary/:newsId", newsSummaryController.getSummary);

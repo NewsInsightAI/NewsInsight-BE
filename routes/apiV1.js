@@ -33,12 +33,12 @@ router.use("/mfa", mfaRoutes);
 router.use("/categories", categoriesRoutes);
 router.use("/news", newsRoutes); // newsRoutes untuk /news/:id, /news/:id/summary, dll
 router.use("/comments", commentsRoutes);
-router.use("/", newsInteractionsRoutes); // Base path untuk news interactions - SETELAH semua route spesifik
 router.use("/bookmarks", bookmarksRoutes);
 router.use("/reading-history", readingHistoryRoutes);
 router.use("/search", searchRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/comment-analysis", commentAnalysisRoutes);
+router.use("/", newsInteractionsRoutes); // Base path untuk news interactions - HARUS PALING TERAKHIR
 
 module.exports = router;

@@ -12,6 +12,7 @@ const getUserBookmarks = async (req, res) => {
         b.id,
         b.created_at as bookmarked_at,
         n.id as news_id,
+        n.hashed_id,
         n.title,
         n.featured_image as image_url,
         n.published_at,
@@ -34,7 +35,7 @@ const getUserBookmarks = async (req, res) => {
       JOIN categories c ON n.category_id = c.id
       LEFT JOIN news_authors na ON n.id = na.news_id
       WHERE b.user_id = $1 AND n.status = 'published'
-      GROUP BY b.id, b.created_at, n.id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
+      GROUP BY b.id, b.created_at, n.id, n.hashed_id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
       ORDER BY b.created_at DESC
       LIMIT $2 OFFSET $3
     `;

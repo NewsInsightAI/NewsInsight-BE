@@ -14,6 +14,7 @@ const getUserReadingHistory = async (req, res) => {
         rh.read_duration,
         rh.read_percentage,
         n.id as news_id,
+        n.hashed_id,
         n.title,
         n.featured_image as image_url,
         n.published_at,
@@ -37,7 +38,7 @@ const getUserReadingHistory = async (req, res) => {
       LEFT JOIN news_authors na ON n.id = na.news_id
       WHERE rh.user_id = $1 AND n.status = 'published'
       GROUP BY rh.id, rh.news_id, rh.read_at, rh.read_duration, rh.read_percentage, 
-               n.id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
+               n.id, n.hashed_id, n.title, n.featured_image, n.published_at, n.status, c.name, c.id
       ORDER BY rh.news_id, rh.read_at DESC
       LIMIT $2 OFFSET $3
     `;
@@ -91,6 +92,7 @@ const addReadingHistory = async (req, res) => {
       });
     }
 
+    // Check if news exists and is published
     const newsCheck = await db.query(
       "SELECT id FROM news WHERE id = $1 AND status = $2",
       [news_id, "published"]
@@ -103,18 +105,43 @@ const addReadingHistory = async (req, res) => {
       });
     }
 
-    const result = await db.query(
-      `INSERT INTO reading_history (user_id, news_id, read_duration, read_percentage) 
-       VALUES ($1, $2, $3, $4) 
-       RETURNING *`,
-      [userId, news_id, read_duration, read_percentage]
-    );
+    // Start transaction for atomic operations
+    await db.query("BEGIN");
 
-    res.status(201).json({
-      success: true,
-      message: "Reading history added successfully",
-      data: result.rows[0],
-    });
+    try {
+      // Add reading history entry
+      const historyResult = await db.query(
+        `INSERT INTO reading_history (user_id, news_id, read_duration, read_percentage) 
+         VALUES ($1, $2, $3, $4) 
+         RETURNING *`,
+        [userId, news_id, read_duration, read_percentage]
+      );
+
+      // Update news_metrics table - increment view count and update last viewed
+      await db.query(
+        `INSERT INTO news_metrics (news_id, view_count, last_viewed_at, created_at, updated_at)
+         VALUES ($1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT (news_id) 
+         DO UPDATE SET 
+           view_count = news_metrics.view_count + 1,
+           last_viewed_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP`,
+        [news_id]
+      );
+
+      // Commit transaction
+      await db.query("COMMIT");
+
+      res.status(201).json({
+        success: true,
+        message: "Reading history added successfully",
+        data: historyResult.rows[0],
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query("ROLLBACK");
+      throw error;
+    }
   } catch (error) {
     console.error("Error adding reading history:", error);
     res.status(500).json({
@@ -194,9 +221,61 @@ const getReadingStats = async (req, res) => {
   }
 };
 
+// New function to track view count for both logged in and anonymous users
+const trackNewsView = async (req, res) => {
+  try {
+    const { news_id } = req.body;
+
+    if (!news_id) {
+      return res.status(400).json({
+        success: false,
+        message: "News ID is required",
+      });
+    }
+
+    // Check if news exists and is published
+    const newsCheck = await db.query(
+      "SELECT id FROM news WHERE id = $1 AND status = $2",
+      [news_id, "published"]
+    );
+
+    if (newsCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "News not found or not published",
+      });
+    }
+
+    // Update news_metrics table - increment view count
+    await db.query(
+      `INSERT INTO news_metrics (news_id, view_count, last_viewed_at, created_at, updated_at)
+       VALUES ($1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT (news_id) 
+       DO UPDATE SET 
+         view_count = news_metrics.view_count + 1,
+         last_viewed_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP`,
+      [news_id]
+    );
+
+    res.json({
+      success: true,
+      message: "News view tracked successfully",
+    });
+  } catch (error) {
+    console.error("Error tracking news view:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to track news view",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getUserReadingHistory,
   addReadingHistory,
   clearReadingHistory,
   getReadingStats,
+  trackNewsView,
 };
