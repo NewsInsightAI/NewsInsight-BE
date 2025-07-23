@@ -325,6 +325,62 @@ class FactCheckController {
       });
     }
   }
+
+  // Check if news has fact check history
+  static async hasFactCheck(req, res) {
+    try {
+      const { newsId } = req.params;
+
+      if (!newsId) {
+        return res.status(400).json({
+          success: false,
+          message: "News ID is required",
+        });
+      }
+
+      const pool = require("../db");
+
+      // Check if there's any fact check history for this news
+      const query = `
+        SELECT 
+          id,
+          created_at,
+          trust_score,
+          total_claims
+        FROM fact_check_history 
+        WHERE news_id = $1 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `;
+
+      const result = await pool.query(query, [newsId]);
+
+      const hasFactCheck = result.rows.length > 0;
+      const latestCheck = hasFactCheck ? result.rows[0] : null;
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          hasFactCheck,
+          latestCheck: latestCheck
+            ? {
+                id: latestCheck.id,
+                checkedAt: latestCheck.created_at,
+                trustScore: latestCheck.trust_score,
+                totalClaims: latestCheck.total_claims,
+              }
+            : null,
+        },
+      });
+    } catch (error) {
+      console.error("Check fact check status error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: error.message,
+      });
+    }
+  }
 }
 
 module.exports = FactCheckController;

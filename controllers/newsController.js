@@ -967,3 +967,82 @@ exports.searchNews = async (req, res) => {
     });
   }
 };
+
+// Update news status with fact check validation
+exports.updateNewsStatus = async (req, res) => {
+  try {
+    const { newsId } = req.params;
+    const { status } = req.body;
+
+    // Validate status
+    const validStatuses = ['draft', 'review', 'scheduled', 'published', 'archived'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid status. Valid statuses are: " + validStatuses.join(', ')
+      });
+    }
+
+    // Check if news exists
+    const newsCheck = await pool.query(
+      'SELECT id, title, status FROM news WHERE id = $1',
+      [newsId]
+    );
+
+    if (newsCheck.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "News not found"
+      });
+    }
+
+    const news = newsCheck.rows[0];
+
+    // If trying to publish, check if fact check has been done
+    if (status === 'published') {
+      const factCheckQuery = await pool.query(
+        'SELECT id FROM fact_check_history WHERE news_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [newsId]
+      );
+
+      if (factCheckQuery.rows.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "Berita tidak dapat dipublikasi tanpa menjalankan fact check terlebih dahulu",
+          code: "FACT_CHECK_REQUIRED"
+        });
+      }
+    }
+
+    // Update the news status
+    const updateQuery = `
+      UPDATE news 
+      SET 
+        status = $1, 
+        published_at = $2,
+        updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $3 
+      RETURNING id, title, status, published_at, updated_at
+    `;
+
+    const publishedAt = status === 'published' ? new Date().toISOString() : null;
+    
+    const result = await pool.query(updateQuery, [status, publishedAt, newsId]);
+
+    res.status(200).json({
+      status: "success",
+      message: `Status berita berhasil diubah menjadi ${status}`,
+      data: {
+        news: result.rows[0]
+      }
+    });
+
+  } catch (error) {
+    console.error("Error updating news status:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};

@@ -34,4 +34,12 @@ router.get(
   FactCheckController.getFactCheckHistory
 );
 
+// Check if news has fact check - requires authentication and admin role
+router.get(
+  "/:newsId/has-check",
+  middlewareAuth,
+  adminOnly,
+  FactCheckController.hasFactCheck
+);
+
 module.exports = router;

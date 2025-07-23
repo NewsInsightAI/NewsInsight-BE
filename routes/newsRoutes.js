@@ -50,6 +50,9 @@ router.get(
 // General routes
 router.get("/", middlewareAuth, newsController.getAllNews);
 
+// Status update route - specific route sebelum general :newsId
+router.patch("/:newsId/status", middlewareAuth, adminOnly, newsController.updateNewsStatus);
+
 // Single param route - PALING BAWAH karena paling umum
 router.get("/:newsId", middlewareAuth, newsController.getNewsById);
 router.post("/", middlewareAuth, newsController.createNews);
