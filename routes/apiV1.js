@@ -17,6 +17,7 @@ const dashboardRoutes = require("./dashboardRoutes");
 const analyticsRoutes = require("./analyticsRoutes");
 const newsInteractionsRoutes = require("./newsInteractionsRoutes");
 const commentAnalysisRoutes = require("./commentAnalysisRoutes");
+const factCheckRoutes = require("./factCheckRoutes");
 
 // Debug middleware untuk melihat request yang masuk
 router.use((req, res, next) => {
@@ -39,6 +40,7 @@ router.use("/search", searchRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/comment-analysis", commentAnalysisRoutes);
+router.use("/fact-check", factCheckRoutes);
 router.use("/", newsInteractionsRoutes); // Base path untuk news interactions - HARUS PALING TERAKHIR
 
 module.exports = router;
