@@ -462,4 +462,132 @@ exports.updateMyProfile = async (req, res) => {
   }
 };
 
+// Get user's font accessibility settings
+exports.getFontSettings = async (req, res) => {
+  const userId = req.user.id;
+  
+  try {
+    const result = await pool.query(
+      "SELECT open_dyslexic_enabled, high_contrast_enabled FROM profile WHERE user_id = $1",
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      // Create default profile if not exists
+      await pool.query(
+        "INSERT INTO profile (user_id, open_dyslexic_enabled, high_contrast_enabled, created_at, updated_at) VALUES ($1, FALSE, FALSE, NOW(), NOW())",
+        [userId]
+      );
+      
+      return res.json({
+        status: "success",
+        message: "Font settings retrieved successfully",
+        data: { 
+          openDyslexicEnabled: false,
+          highContrastEnabled: false 
+        },
+        error: null,
+        metadata: null
+      });
+    }
+    
+    res.json({
+      status: "success",
+      message: "Font settings retrieved successfully",
+      data: { 
+        openDyslexicEnabled: result.rows[0].open_dyslexic_enabled || false,
+        highContrastEnabled: result.rows[0].high_contrast_enabled || false
+      },
+      error: null,
+      metadata: null
+    });
+  } catch (err) {
+    console.error("Font settings fetch error:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
+  }
+};
+
+// Update user's font accessibility settings
+exports.updateFontSettings = async (req, res) => {
+  const userId = req.user.id;
+  const { openDyslexicEnabled, highContrastEnabled } = req.body;
+  
+  try {
+    // Validate input
+    if (typeof openDyslexicEnabled !== 'boolean') {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid input: openDyslexicEnabled must be a boolean",
+        data: null,
+        error: { code: "INVALID_INPUT" },
+        metadata: null
+      });
+    }
+
+    // Validate high contrast input if provided
+    if (highContrastEnabled !== undefined && typeof highContrastEnabled !== 'boolean') {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid input: highContrastEnabled must be a boolean",
+        data: null,
+        error: { code: "INVALID_INPUT" },
+        metadata: null
+      });
+    }
+    
+    // Check if profile exists
+    const checkResult = await pool.query(
+      "SELECT id FROM profile WHERE user_id = $1",
+      [userId]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      // Create profile if not exists
+      await pool.query(
+        "INSERT INTO profile (user_id, open_dyslexic_enabled, high_contrast_enabled, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+        [userId, openDyslexicEnabled, highContrastEnabled || false]
+      );
+    } else {
+      // Update existing profile
+      if (highContrastEnabled !== undefined) {
+        await pool.query(
+          "UPDATE profile SET open_dyslexic_enabled = $1, high_contrast_enabled = $2, updated_at = NOW() WHERE user_id = $3",
+          [openDyslexicEnabled, highContrastEnabled, userId]
+        );
+      } else {
+        await pool.query(
+          "UPDATE profile SET open_dyslexic_enabled = $1, updated_at = NOW() WHERE user_id = $2",
+          [openDyslexicEnabled, userId]
+        );
+      }
+    }
+    
+    res.json({
+      status: "success",
+      message: "Font settings updated successfully",
+      data: { 
+        openDyslexicEnabled,
+        highContrastEnabled: highContrastEnabled || false
+      },
+      error: null,
+      metadata: null
+    });
+  } catch (err) {
+    console.error("Font settings update error:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+      data: null,
+      error: { code: "SERVER_ERROR" },
+      metadata: null
+    });
+  }
+};
+
 
