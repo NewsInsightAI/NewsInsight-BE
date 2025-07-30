@@ -41,6 +41,6 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/comment-analysis", commentAnalysisRoutes);
 router.use("/fact-check", factCheckRoutes);
-router.use("/", newsInteractionsRoutes); // Base path untuk news interactions - HARUS PALING TERAKHIR
+router.use("/news-interactions", newsInteractionsRoutes); // News interactions routes
 
 module.exports = router;

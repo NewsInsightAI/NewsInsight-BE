@@ -195,3 +195,147 @@ exports.trackNewsShare = async (req, res) => {
     });
   }
 };
+
+// Get News Engagement Metrics
+exports.getNewsEngagementMetrics = async (req, res) => {
+  try {
+    const { newsId } = req.params;
+
+    // Query for all engagement metrics using correct table names
+    const [
+      viewsResult,
+      commentsResult,
+      sharesResult,
+      bookmarksResult
+    ] = await Promise.all([
+      // Views from reading_history table
+      db.query("SELECT COUNT(*) as views FROM reading_history WHERE news_id = $1", [newsId]),
+      
+      // Comments from comments table
+      db.query("SELECT COUNT(*) as comments FROM comments WHERE news_id = $1 AND status = 'published'", [newsId]),
+      
+      // Shares from news_shares table
+      db.query("SELECT COUNT(*) as shares FROM news_shares WHERE news_id = $1", [newsId]),
+      
+      // Bookmarks from bookmarks table
+      db.query("SELECT COUNT(*) as bookmarks FROM bookmarks WHERE news_id = $1", [newsId])
+    ]);
+
+    const metrics = {
+      views: parseInt(viewsResult.rows[0]?.views || 0),
+      comments: parseInt(commentsResult.rows[0]?.comments || 0),
+      shares: parseInt(sharesResult.rows[0]?.shares || 0),
+      bookmarks: parseInt(bookmarksResult.rows[0]?.bookmarks || 0)
+    };
+
+    res.json({
+      success: true,
+      data: metrics
+    });
+  } catch (error) {
+    console.error("Error getting news engagement metrics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil metrics engagement",
+      error: error.message,
+    });
+  }
+};
+
+// Get Engagement Metrics for Multiple News
+exports.getBulkNewsEngagementMetrics = async (req, res) => {
+  try {
+    const { newsIds } = req.body; // Array of news IDs
+
+    if (!newsIds || !Array.isArray(newsIds)) {
+      return res.status(400).json({
+        success: false,
+        message: "newsIds array is required"
+      });
+    }
+
+    // Create placeholders for IN clause
+    const placeholders = newsIds.map((_, index) => `$${index + 1}`).join(',');
+
+    const [
+      viewsResult,
+      commentsResult,
+      sharesResult,
+      bookmarksResult
+    ] = await Promise.all([
+      // Views from reading_history table
+      db.query(`
+        SELECT news_id, COUNT(*) as views 
+        FROM reading_history 
+        WHERE news_id IN (${placeholders}) 
+        GROUP BY news_id
+      `, newsIds),
+      
+      // Comments from comments table
+      db.query(`
+        SELECT news_id, COUNT(*) as comments 
+        FROM comments 
+        WHERE news_id IN (${placeholders}) AND status = 'published'
+        GROUP BY news_id
+      `, newsIds),
+      
+      // Shares from news_shares table
+      db.query(`
+        SELECT news_id, COUNT(*) as shares 
+        FROM news_shares 
+        WHERE news_id IN (${placeholders})
+        GROUP BY news_id
+      `, newsIds),
+      
+      // Bookmarks from bookmarks table only (fixing parameter count)
+      db.query(`
+        SELECT news_id, COUNT(*) as bookmarks 
+        FROM bookmarks 
+        WHERE news_id IN (${placeholders})
+        GROUP BY news_id
+      `, newsIds)
+    ]);
+
+    // Organize data by news_id
+    const metricsMap = {};
+    
+    // Initialize all news with zero values
+    newsIds.forEach(newsId => {
+      metricsMap[newsId] = {
+        views: 0,
+        comments: 0,
+        shares: 0,
+        bookmarks: 0
+      };
+    });
+
+    // Populate with actual data
+    viewsResult.rows.forEach(row => {
+      metricsMap[row.news_id].views = parseInt(row.views);
+    });
+    
+    commentsResult.rows.forEach(row => {
+      metricsMap[row.news_id].comments = parseInt(row.comments);
+    });
+    
+    sharesResult.rows.forEach(row => {
+      metricsMap[row.news_id].shares = parseInt(row.shares);
+    });
+    
+    bookmarksResult.rows.forEach(row => {
+      metricsMap[row.news_id].bookmarks = parseInt(row.bookmarks);
+    });
+
+    res.json({
+      success: true,
+      data: metricsMap
+    });
+  } catch (error) {
+    console.error("Error getting bulk news engagement metrics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil bulk metrics engagement",
+      error: error.message,
+    });
+  }
+};

@@ -13,6 +13,28 @@ exports.getCommentsForNews = async (req, res) => {
       });
     }
 
+    // First, determine if newsId is a hashed_id or numeric id
+    let actualNewsId;
+
+    // Check if newsId is numeric (integer id) or string (hashed_id)
+    if (!isNaN(parseInt(newsId)) && parseInt(newsId).toString() === newsId) {
+      // It's a numeric id
+      actualNewsId = parseInt(newsId);
+    } else {
+      // It's a hashed_id, need to get the numeric id from news table
+      const newsQuery = `SELECT id FROM news WHERE hashed_id = $1`;
+      const newsResult = await pool.query(newsQuery, [newsId]);
+
+      if (newsResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "News not found",
+        });
+      }
+
+      actualNewsId = newsResult.rows[0].id;
+    }
+
     // Get main comments (parent_id is null)
     // Show published comments for everyone + waiting comments for the owner
     const commentsQuery = `
@@ -52,7 +74,7 @@ exports.getCommentsForNews = async (req, res) => {
     `;
 
     const mainComments = await pool.query(commentsQuery, [
-      newsId,
+      actualNewsId,
       user_email || null,
     ]);
 
@@ -96,7 +118,7 @@ exports.getCommentsForNews = async (req, res) => {
     const commentsWithReplies = [];
     for (const comment of mainComments.rows) {
       const replies = await pool.query(repliesQuery, [
-        newsId,
+        actualNewsId,
         user_email || null,
         comment.id,
       ]);
@@ -1166,7 +1188,7 @@ exports.reportComment = async (req, res) => {
 
     // Check if user has already reported this comment
     const existingReport = await pool.query(
-      "SELECT id FROM comment_reports WHERE comment_id = $1 AND reporter_email = $2",
+      "SELECT id FROM comment_reports WHERE comment_id = $1 AND user_email = $2",
       [id, user_email]
     );
 
@@ -1177,22 +1199,9 @@ exports.reportComment = async (req, res) => {
       });
     }
 
-    // Create the comment_reports table if it doesn't exist
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS comment_reports (
-        id SERIAL PRIMARY KEY,
-        comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
-        reporter_email VARCHAR(255) NOT NULL,
-        reason TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Insert the report
+    // Insert the report (using existing table structure)
     const result = await pool.query(
-      `INSERT INTO comment_reports (comment_id, reporter_email, reason) 
+      `INSERT INTO comment_reports (comment_id, user_email, reason) 
        VALUES ($1, $2, $3) 
        RETURNING *`,
       [id, user_email, reason]

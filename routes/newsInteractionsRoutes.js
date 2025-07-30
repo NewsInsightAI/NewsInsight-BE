@@ -36,4 +36,14 @@ router.post(
 // Share News Routes (tracking)
 router.post("/news/:newsId/share", newsInteractionsController.trackNewsShare); // No auth required for guest tracking
 
+// Engagement Metrics Routes
+router.get(
+  "/news/:newsId/engagement",
+  newsInteractionsController.getNewsEngagementMetrics
+);
+router.post(
+  "/news/bulk-engagement",
+  newsInteractionsController.getBulkNewsEngagementMetrics
+);
+
 module.exports = router;
